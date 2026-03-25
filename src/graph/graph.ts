@@ -570,10 +570,10 @@ export class Graph extends SceneNode {
       ctx.restore();
     }
 
-    ctx.restore(); // undo zoom/pan transform
-
     // --- Render particles (inside graph transform, same as nodes/edges) ---
     this.particleSys.render(ctx);
+
+    ctx.restore(); // undo zoom/pan transform
   }
 
   /**
