@@ -193,8 +193,8 @@ export class Graph extends SceneNode {
         speed: 40,
         size: 2,
         decay: 0.03,
-        this.reheat(0.15);
-  });
+      });
+      this.reheat(0.15);
     }
   }
 
