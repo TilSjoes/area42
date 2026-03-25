@@ -104,7 +104,14 @@ export class Panel extends SceneNode {
     ctx.clip();
     const grad = ctx.createLinearGradient(x, y, x + w, y);
     grad.addColorStop(0, "transparent");
-    grad.addColorStop(0.5, this.titleColor + "88");
+    // Handle both hex (#ff6b6b) and rgba() color formats
+    let gradColor = this.titleColor;
+    if (gradColor.startsWith("#")) {
+      gradColor = gradColor + "88";
+    } else if (gradColor.startsWith("rgb")) {
+      gradColor = gradColor.replace(/[\d.]+\)\$/, "0.5)");
+    }
+    grad.addColorStop(0.5, gradColor);
     grad.addColorStop(1, "transparent");
     ctx.fillStyle = grad;
     ctx.fillRect(x, y, w, 1.5);
