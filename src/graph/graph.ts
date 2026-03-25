@@ -221,7 +221,7 @@ export class Graph extends SceneNode {
       node.pulseColor = color ?? "#ffffff";
       // Also emit burst particles
       const wp = this.worldPosition();
-      this.particleSys.emit(wp.x + this.centerX + node.x, wp.y + this.centerY + node.y, {
+      this.particleSys.emit(this.centerX + node.x, this.centerY + node.y, {
         count: 12,
         color: color ?? node.glow,
         speed: 40,
@@ -572,12 +572,8 @@ export class Graph extends SceneNode {
 
     ctx.restore(); // undo zoom/pan transform
 
-    // --- Render particles (in world space, so translate back) ---
-    ctx.save();
-    const wp = this.worldPosition();
-    ctx.translate(-wp.x - this.position.x, -wp.y - this.position.y);
+    // --- Render particles (inside graph transform, same as nodes/edges) ---
     this.particleSys.render(ctx);
-    ctx.restore();
   }
 
   /**

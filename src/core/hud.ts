@@ -563,7 +563,16 @@ export class HUD {
     canvas.addEventListener("touchend", (e: TouchEvent) => {
       e.preventDefault();
       this.lastPinchDist = 0;
-      canvas.dispatchEvent(new MouseEvent("mouseup", {}));
+      // Use changedTouches to get the final position (touches is empty on touchend)
+      const endTouch = e.changedTouches[0];
+      const coords = endTouch ? { clientX: endTouch.clientX, clientY: endTouch.clientY } : {};
+      canvas.dispatchEvent(new MouseEvent("mouseup", coords));
+      // If no drag happened, also fire a click for detail panel detection
+      if (!touchMoved && endTouch) {
+        canvas.dispatchEvent(new MouseEvent("click", {
+          clientX: endTouch.clientX, clientY: endTouch.clientY,
+        }));
+      }
     }, { passive: false });
   }
 
