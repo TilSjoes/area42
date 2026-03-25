@@ -664,13 +664,12 @@ export class Graph extends SceneNode {
     node.y = y;
   }
 
-  /** End dragging — unpin so physics resumes, auto-save positions */
+  /** End dragging — node stays pinned where placed, auto-save */
   endNodeDrag(node: GraphNode) {
-    node.pinned = false;
+    node.pinned = true;  // Stay where the user put you
     node.vx = 0;
     node.vy = 0;
-    this.reheat(0.2);
-    // Auto-save positions after every drag
+    this.reheat(0.1);  // Gentle reheat so unpinned nodes settle around
     this.savePositions();
   }
 
