@@ -578,6 +578,48 @@ export class Graph extends SceneNode {
     this.alpha = Math.max(this.alpha, alpha);
   }
 
+  /** Save all node positions to localStorage */
+  savePositions(key = "area42-graph-positions") {
+    const positions: Record<string, { x: number; y: number; pinned: boolean }> = {};
+    for (const [id, node] of this.nodes) {
+      positions[id] = { x: node.x, y: node.y, pinned: node.pinned };
+    }
+    try {
+      localStorage.setItem(key, JSON.stringify(positions));
+    } catch {}
+  }
+
+  /** Load node positions from localStorage */
+  loadPositions(key = "area42-graph-positions"): boolean {
+    try {
+      const raw = localStorage.getItem(key);
+      if (!raw) return false;
+      const positions = JSON.parse(raw) as Record<string, { x: number; y: number; pinned: boolean }>;
+      let loaded = 0;
+      for (const [id, pos] of Object.entries(positions)) {
+        const node = this.nodes.get(id);
+        if (node) {
+          node.x = pos.x;
+          node.y = pos.y;
+          if (pos.pinned) node.pinned = true;
+          loaded++;
+        }
+      }
+      if (loaded > 0) {
+        // Disable simulation since we have saved positions
+        this.alpha = this.alphaMin;
+      }
+      return loaded > 0;
+    } catch {
+      return false;
+    }
+  }
+
+  /** Clear saved positions */
+  clearPositions(key = "area42-graph-positions") {
+    try { localStorage.removeItem(key); } catch {}
+  }
+
   /** Find graph node at canvas coordinates */
   findNodeAt(canvasX: number, canvasY: number): GraphNode | null {
     const wp = this.worldPosition();
@@ -600,19 +642,36 @@ export class Graph extends SceneNode {
     this.reheat(0.3);
   }
 
-  /** Move a dragged node to canvas coordinates */
+  /** Grid snap size for nodes (0 = disabled) */
+  gridSnap = 20;
+
+  /** Move a dragged node to canvas coordinates, with optional grid snap */
   dragNode(node: GraphNode, canvasX: number, canvasY: number) {
     const wp = this.worldPosition();
-    node.x = canvasX - wp.x - this.centerX;
-    node.y = canvasY - wp.y - this.centerY;
+    let x = canvasX - wp.x - this.centerX;
+    let y = canvasY - wp.y - this.centerY;
+
+    // Magnetic grid snap
+    if (this.gridSnap > 0) {
+      const snapX = Math.round(x / this.gridSnap) * this.gridSnap;
+      const snapY = Math.round(y / this.gridSnap) * this.gridSnap;
+      // Only snap if close enough (within half grid size)
+      if (Math.abs(x - snapX) < this.gridSnap * 0.4) x = snapX;
+      if (Math.abs(y - snapY) < this.gridSnap * 0.4) y = snapY;
+    }
+
+    node.x = x;
+    node.y = y;
   }
 
-  /** End dragging — unpin so physics resumes */
+  /** End dragging — unpin so physics resumes, auto-save positions */
   endNodeDrag(node: GraphNode) {
     node.pinned = false;
     node.vx = 0;
     node.vy = 0;
     this.reheat(0.2);
+    // Auto-save positions after every drag
+    this.savePositions();
   }
 
   /**

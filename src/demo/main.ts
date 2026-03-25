@@ -111,6 +111,15 @@ graph.addEdge({ from: "nats", to: "spine", color: "#ffd43b", dashed: true, width
 graph.addEdge({ from: "moe", to: "nats", color: "#22d3ee66", width: 0.8 });
 graph.addEdge({ from: "dense", to: "nats", color: "#a78bfa66", width: 0.8 });
 
+// Load saved node positions (sticky between sessions)
+const loaded = graph.loadPositions();
+if (loaded) {
+  console.log("Area42: Loaded saved node positions");
+} else {
+  console.log("Area42: Using physics layout (drag nodes to arrange, positions auto-save)");
+}
+
+
 // --- Cost Panel with TimeSeries ---
 const costSeries = new TimeSeries({ color: NeonTheme.success, maxPoints: 60 });
 const tokenSeries = new TimeSeries({ color: NeonTheme.accent2, maxPoints: 60 });
