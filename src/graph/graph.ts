@@ -578,6 +578,43 @@ export class Graph extends SceneNode {
     this.alpha = Math.max(this.alpha, alpha);
   }
 
+  /** Find graph node at canvas coordinates */
+  findNodeAt(canvasX: number, canvasY: number): GraphNode | null {
+    const wp = this.worldPosition();
+    const localX = canvasX - wp.x - this.centerX;
+    const localY = canvasY - wp.y - this.centerY;
+    // Check in reverse order (front to back)
+    const nodes = Array.from(this.nodes.values()).reverse();
+    for (const node of nodes) {
+      const dx = localX - node.x;
+      const dy = localY - node.y;
+      const r = (node.radius ?? 20) + 5; // slight padding for easier clicking
+      if (dx * dx + dy * dy < r * r) return node;
+    }
+    return null;
+  }
+
+  /** Start dragging a node — pins it and reheats simulation */
+  startNodeDrag(node: GraphNode) {
+    node.pinned = true;
+    this.reheat(0.3);
+  }
+
+  /** Move a dragged node to canvas coordinates */
+  dragNode(node: GraphNode, canvasX: number, canvasY: number) {
+    const wp = this.worldPosition();
+    node.x = canvasX - wp.x - this.centerX;
+    node.y = canvasY - wp.y - this.centerY;
+  }
+
+  /** End dragging — unpin so physics resumes */
+  endNodeDrag(node: GraphNode) {
+    node.pinned = false;
+    node.vx = 0;
+    node.vy = 0;
+    this.reheat(0.2);
+  }
+
   /**
    * Arrange nodes in a radial layout around the center.
    */

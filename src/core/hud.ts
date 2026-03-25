@@ -8,6 +8,8 @@
 import { Renderer, RenderContext } from "./renderer.js";
 import { Scene, SceneNode, Vec2 } from "./scene.js";
 import { Panel, PanelOptions } from "../panels/panel.js";
+import { Graph } from "../graph/graph.js";
+import type { GraphNode } from "../graph/graph.js";
 import { Theme, NeonTheme } from "../themes/neon.js";
 
 export interface HUDOptions {
@@ -114,6 +116,8 @@ export class HUD {
   private readonly SNAP_DISTANCE = 15;  // px to trigger magnetic snap
   private readonly EDGE_DOCK_MARGIN = 8;  // px from container edge
   private resizeTarget: Panel | null = null;
+  private dragNode: GraphNode | null = null;
+  private dragGraph: Graph | null = null;
   private resizeEdge: string = "";
 
   /** Snap position to grid or nearby panels */
@@ -157,6 +161,19 @@ export class HUD {
       const point = this.canvasPoint(e);
       // Check panels (reverse order = front first)
       const nodes = [...this.panels.values()].reverse();
+      // Check graph nodes first
+      for (const child of this.scene.root.children) {
+        if (child instanceof Graph) {
+          const hitNode = child.findNodeAt(point.x, point.y);
+          if (hitNode) {
+            this.dragNode = hitNode;
+            this.dragGraph = child;
+            child.startNodeDrag(hitNode);
+            return;
+          }
+        }
+      }
+
       for (const panel of nodes) {
         // Check resize handle first (bottom-right 12x12 corner)
         const wp = panel.worldPosition();
@@ -183,7 +200,9 @@ export class HUD {
 
     canvas.addEventListener("mousemove", (e) => {
       const point = this.canvasPoint(e);
-      if (this.resizeTarget) {
+      if (this.dragNode && this.dragGraph) {
+        this.dragGraph.dragNode(this.dragNode, point.x, point.y);
+      } else if (this.resizeTarget) {
         this.handleResize(point);
       } else if (this.dragTarget) {
         this.dragTarget.drag(point);
@@ -196,7 +215,17 @@ export class HUD {
         const node = this.scene.findAt(point);
         if (node !== this.hoverTarget) {
           this.hoverTarget = node;
-          // Check resize corners
+          // Check graph nodes for pointer cursor
+        for (const child of this.scene.root.children) {
+          if (child instanceof Graph) {
+            const hitNode = child.findNodeAt(point.x, point.y);
+            if (hitNode) {
+              canvas.style.cursor = "grab";
+              return;
+            }
+          }
+        }
+        // Check resize corners
         let isResize = false;
         for (const [, p] of this.panels) {
           if (p.collapsed) continue;
@@ -216,6 +245,11 @@ export class HUD {
       if (this.dragTarget) {
         this.dragTarget.endDrag();
         this.dragTarget = null;
+      }
+      if (this.dragNode && this.dragGraph) {
+        this.dragGraph.endNodeDrag(this.dragNode);
+        this.dragNode = null;
+        this.dragGraph = null;
       }
       if (this.resizeTarget) {
         this.resizeTarget = null;
