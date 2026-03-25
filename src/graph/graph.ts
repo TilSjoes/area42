@@ -131,10 +131,10 @@ export class Graph extends SceneNode {
   private simulationActive = true;
 
   // Force parameters
-  private repulsionStrength = -300;
+  private repulsionStrength = -400;
   private springLength = 150;
   private springStrength = 0.003;
-  private centerGravity = 0.005;
+  private centerGravity = 0.001;
   private damping = 0.85;
   private alpha = 1.0;         // simulation "temperature" — decays to settle
   private alphaDecay = 0.998;  // how fast it cools (closer to 1 = slower)

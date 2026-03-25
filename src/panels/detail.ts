@@ -101,7 +101,7 @@ export class DetailPanel extends Panel {
     }
     if (d.actions) h += 30;
     // Custom renderers get extra space
-    if (d._tableRenderer) h += 160;
+    if (d._tableRenderer) h += 220;
     if (d._miniGraphRenderer) h += 100;
     return h;
   }
@@ -244,11 +244,12 @@ export class DetailPanel extends Panel {
       y += 100;
     }
 
-    // Custom table renderer
+    // Custom table renderer — fills remaining panel height
     if (d._tableRenderer) {
       y += 8;
-      d._tableRenderer(ctx, x, y, panelW - 24, 150);
-      y += 160;
+      const remainingH = Math.max(100, this.size.y - y - 12);
+      d._tableRenderer(ctx, x, y, panelW - 24, remainingH);
+      y += remainingH;
     }
 
     ctx.restore(); // undo translate
