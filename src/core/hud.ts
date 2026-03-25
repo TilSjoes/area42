@@ -773,11 +773,12 @@ export class HUD {
       graph.collapse(nodeId);
       expandedNodes.delete(nodeId);
     } else {
-      const children = drillDownDefs[nodeId];
-      if (children) {
-        graph.expand(nodeId, children);
-        expandedNodes.add(nodeId);
-      }
+      // Use expandAsync which calls the onExpand callback for dynamic data
+      graph.expandAsync(nodeId).then(() => {
+        if (node.childIds && node.childIds.length > 0) {
+          expandedNodes.add(nodeId);
+        }
+      });
     }
   }
 
