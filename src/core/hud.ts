@@ -94,7 +94,7 @@ export class HUD {
   private drawGrid(rc: RenderContext) {
     const ctx = rc.ctx;
     const spacing = 40;
-    ctx.strokeStyle = "rgba(255,255,255,0.015)";
+    ctx.strokeStyle = "rgba(255,255,255,0.04)";
     ctx.lineWidth = 0.5;
 
     for (let x = 0; x < rc.width; x += spacing) {
@@ -111,6 +111,44 @@ export class HUD {
     }
   }
 
+  private readonly SNAP_DISTANCE = 15;  // px to trigger magnetic snap
+  private readonly EDGE_DOCK_MARGIN = 8;  // px from container edge
+  private resizeTarget: Panel | null = null;
+  private resizeEdge: string = "";
+
+  /** Snap position to grid or nearby panels */
+  private magneticSnap(panel: Panel, pos: Vec2): Vec2 {
+    const gridSize = 20;
+    let x = pos.x;
+    let y = pos.y;
+
+    // Snap to container edges
+    if (x < this.SNAP_DISTANCE) x = this.EDGE_DOCK_MARGIN;
+    if (y < this.SNAP_DISTANCE) y = this.EDGE_DOCK_MARGIN;
+    if (x + panel.size.x > this.renderer.width - this.SNAP_DISTANCE) x = this.renderer.width - panel.size.x - this.EDGE_DOCK_MARGIN;
+    if (y + panel.size.y > this.renderer.height - this.SNAP_DISTANCE) y = this.renderer.height - panel.size.y - this.EDGE_DOCK_MARGIN;
+
+    // Snap to other panels (align edges)
+    for (const [id, other] of this.panels) {
+      if (other === panel) continue;
+      const op = other.worldPosition();
+      // Left edge aligns with other's left or right
+      if (Math.abs(x - op.x) < this.SNAP_DISTANCE) x = op.x;
+      if (Math.abs(x - (op.x + other.size.x)) < this.SNAP_DISTANCE) x = op.x + other.size.x;
+      // Right edge
+      if (Math.abs((x + panel.size.x) - op.x) < this.SNAP_DISTANCE) x = op.x - panel.size.x;
+      if (Math.abs((x + panel.size.x) - (op.x + other.size.x)) < this.SNAP_DISTANCE) x = op.x + other.size.x - panel.size.x;
+      // Top
+      if (Math.abs(y - op.y) < this.SNAP_DISTANCE) y = op.y;
+      if (Math.abs(y - (op.y + other.size.y)) < this.SNAP_DISTANCE) y = op.y + other.size.y;
+      // Bottom
+      if (Math.abs((y + panel.size.y) - op.y) < this.SNAP_DISTANCE) y = op.y - panel.size.y;
+      if (Math.abs((y + panel.size.y) - (op.y + other.size.y)) < this.SNAP_DISTANCE) y = op.y + other.size.y - panel.size.y;
+    }
+
+    return { x, y };
+  }
+
   /** Mouse interaction setup */
   private setupInteractions() {
     const canvas = this.renderer["canvas"] as HTMLCanvasElement;
@@ -120,6 +158,18 @@ export class HUD {
       // Check panels (reverse order = front first)
       const nodes = [...this.panels.values()].reverse();
       for (const panel of nodes) {
+        // Check resize handle first (bottom-right 12x12 corner)
+        const wp = panel.worldPosition();
+        const rx = wp.x + panel.size.x;
+        const ry = wp.y + (panel.collapsed ? 28 : panel.size.y);
+        if (!panel.collapsed && Math.abs(point.x - rx) < 12 && Math.abs(point.y - ry) < 12) {
+          this.resizeTarget = panel;
+          this.resizeEdge = "se";
+          // Bring to front
+          this.scene.root.remove(panel);
+          this.scene.root.add(panel);
+          break;
+        }
         if (panel.isInHeader(point)) {
           this.dragTarget = panel;
           panel.startDrag(point);
@@ -133,14 +183,31 @@ export class HUD {
 
     canvas.addEventListener("mousemove", (e) => {
       const point = this.canvasPoint(e);
-      if (this.dragTarget) {
+      if (this.resizeTarget) {
+        this.handleResize(point);
+      } else if (this.dragTarget) {
         this.dragTarget.drag(point);
+        // Apply magnetic snapping
+        const snapped = this.magneticSnap(this.dragTarget, this.dragTarget.position);
+        this.dragTarget.position.x = snapped.x;
+        this.dragTarget.position.y = snapped.y;
       } else {
         // Hover detection
         const node = this.scene.findAt(point);
         if (node !== this.hoverTarget) {
           this.hoverTarget = node;
-          canvas.style.cursor = node ? "pointer" : "default";
+          // Check resize corners
+        let isResize = false;
+        for (const [, p] of this.panels) {
+          if (p.collapsed) continue;
+          const wp2 = p.worldPosition();
+          if (Math.abs(point.x - (wp2.x + p.size.x)) < 12 && Math.abs(point.y - (wp2.y + p.size.y)) < 12) {
+            canvas.style.cursor = "se-resize";
+            isResize = true;
+            break;
+          }
+        }
+        if (!isResize) canvas.style.cursor = node ? "pointer" : "default";
         }
       }
     });
@@ -149,6 +216,10 @@ export class HUD {
       if (this.dragTarget) {
         this.dragTarget.endDrag();
         this.dragTarget = null;
+      }
+      if (this.resizeTarget) {
+        this.resizeTarget = null;
+        this.resizeEdge = "";
       }
     });
 
@@ -167,6 +238,14 @@ export class HUD {
   private canvasPoint(e: MouseEvent): Vec2 {
     const rect = this.container.getBoundingClientRect();
     return { x: e.clientX - rect.left, y: e.clientY - rect.top };
+  }
+
+  /** Handle panel resize drag */
+  private handleResize(point: Vec2) {
+    if (!this.resizeTarget) return;
+    const wp = this.resizeTarget.worldPosition();
+    this.resizeTarget.size.x = Math.max(150, point.x - wp.x);
+    this.resizeTarget.size.y = Math.max(80, point.y - wp.y);
   }
 
   /** Destroy the HUD */

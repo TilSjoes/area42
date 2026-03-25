@@ -129,6 +129,23 @@ export class Panel extends SceneNode {
 
     ctx.restore();
 
+    // Resize handle (bottom-right corner)
+    if (!this.collapsed) {
+      ctx.save();
+      ctx.strokeStyle = "rgba(255,255,255,0.15)";
+      ctx.lineWidth = 1;
+      const hx = w - 4, hy = h - 4;
+      ctx.beginPath();
+      ctx.moveTo(x + hx - 8, y + hy);
+      ctx.lineTo(x + hx, y + hy - 8);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(x + hx - 4, y + hy);
+      ctx.lineTo(x + hx, y + hy - 4);
+      ctx.stroke();
+      ctx.restore();
+    }
+
     // Ambient glow effect
     if (this.glass) {
       ctx.save();
