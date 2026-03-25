@@ -227,8 +227,10 @@ export class Graph extends SceneNode {
     const parent = this.nodes.get(nodeId);
     if (!parent) return;
 
+    parent.pinned = true;  // Lock parent in place while expanded
+
     const angleStep = (Math.PI * 2) / children.length;
-    const expandRadius = 80;
+    const expandRadius = 60;
 
     for (let i = 0; i < children.length; i++) {
       const angle = angleStep * i;
@@ -240,6 +242,7 @@ export class Graph extends SceneNode {
         },
       });
       child.parentId = nodeId;
+      child.pinned = true;  // Pin so gravity doesn't steal them
       this.nodes.set(child.id, child);
       parent.childIds.push(child.id);
 
@@ -262,6 +265,10 @@ export class Graph extends SceneNode {
   collapse(nodeId: string): void {
     const parent = this.nodes.get(nodeId);
     if (!parent) return;
+
+    // Check if parent was manually placed (has saved position)
+    // If not, unpin so physics can move it
+    // For now, keep it pinned since user likely placed it
 
     const toRemove = [...parent.childIds];
     for (const childId of toRemove) {
