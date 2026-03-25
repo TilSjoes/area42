@@ -175,7 +175,7 @@ export class Panel extends SceneNode {
     // Ambient glow effect
     if (this.glass) {
       ctx.save();
-      ctx.shadowColor = this.titleColor;
+      ctx.shadowColor = this.titleColor.startsWith("#") ? this.titleColor : "#7b68ee";
       ctx.shadowBlur = 20;
       ctx.globalAlpha = 0.05;
       this.roundRect(ctx, x, y, w, h, r);
