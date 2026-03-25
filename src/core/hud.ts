@@ -71,6 +71,8 @@ export class HUD {
 
   // Touch pinch state
   private lastPinchDist = 0;
+  private lastPinchMidX = 0;
+  private lastPinchMidY = 0;
 
   constructor(selector: string | HTMLElement, options: HUDOptions = {}) {
     const el = typeof selector === "string" ? document.querySelector(selector) : selector;
@@ -507,6 +509,8 @@ export class HUD {
         const dx = e.touches[0].clientX - e.touches[1].clientX;
         const dy = e.touches[0].clientY - e.touches[1].clientY;
         this.lastPinchDist = Math.sqrt(dx * dx + dy * dy);
+        this.lastPinchMidX = (e.touches[0].clientX + e.touches[1].clientX) / 2;
+        this.lastPinchMidY = (e.touches[0].clientY + e.touches[1].clientY) / 2;
         return;
       }
 
@@ -534,20 +538,28 @@ export class HUD {
         const dx = e.touches[0].clientX - e.touches[1].clientX;
         const dy = e.touches[0].clientY - e.touches[1].clientY;
         const dist = Math.sqrt(dx * dx + dy * dy);
+        const midX = (e.touches[0].clientX + e.touches[1].clientX) / 2;
+        const midY = (e.touches[0].clientY + e.touches[1].clientY) / 2;
         if (this.lastPinchDist > 0) {
-          const midX = (e.touches[0].clientX + e.touches[1].clientX) / 2;
-          const midY = (e.touches[0].clientY + e.touches[1].clientY) / 2;
           const rect = canvas.getBoundingClientRect();
           const canvasX = midX - rect.left;
           const canvasY = midY - rect.top;
+          // Zoom from pinch distance change
           const delta = this.lastPinchDist - dist;
+          // Pan from midpoint movement
+          const panDx = midX - this.lastPinchMidX;
+          const panDy = midY - this.lastPinchMidY;
           for (const child of this.scene.root.children) {
             if (child instanceof Graph) {
               child.applyZoom(delta, canvasX, canvasY);
+              child.offsetX += panDx;
+              child.offsetY += panDy;
             }
           }
         }
         this.lastPinchDist = dist;
+        this.lastPinchMidX = midX;
+        this.lastPinchMidY = midY;
         return;
       }
 

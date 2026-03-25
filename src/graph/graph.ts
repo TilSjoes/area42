@@ -240,9 +240,8 @@ export class Graph extends SceneNode {
     const toNode = this.nodes.get(toId);
     if (!fromNode || !toNode) return;
 
-    const wp = this.worldPosition();
-    const ox = wp.x + this.centerX;
-    const oy = wp.y + this.centerY;
+    const ox = this.centerX;
+    const oy = this.centerY;
 
     this.particleSys.emitAlongEdge(
       { x: ox + fromNode.x, y: oy + fromNode.y },
