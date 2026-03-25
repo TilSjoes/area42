@@ -7,6 +7,8 @@
  */
 import { HUD } from "../core/hud.js";
 import { Graph } from "../graph/graph.js";
+import { DetailPanel } from "../panels/detail.js";
+import type { NodeDetail } from "../panels/detail.js";
 import { TimeSeries } from "../charts/timeseries.js";
 import { MetricDisplay } from "../panels/metric.js";
 import { SSESource } from "../data/source.js";
@@ -14,6 +16,165 @@ import { NeonTheme } from "../themes/neon.js";
 
 // --- Initialize HUD ---
 const hud = new HUD("#hud", { theme: "neon" });
+
+
+// --- Detail Panel (click-to-inspect) ---
+const detailPanel = new DetailPanel({ x: 800, y: 40 });
+hud.scene.root.add(detailPanel);
+
+// Node detail definitions
+const nodeDetails: Record<string, NodeDetail> = {
+  spine: {
+    nodeId: "spine", title: "Spine Classifier", subtitle: "Independent routing intelligence",
+    color: "#f97316",
+    sections: [
+      { title: "Model", fields: [
+        { label: "Base", value: "Qwen3.5-0.8B", color: "#f97316" },
+        { label: "Type", value: "Fine-tuned LoRA", color: "#c8d6e5" },
+        { label: "VRAM", value: "1.5 GB", color: "#c8d6e5" },
+        { label: "Port", value: "8083", color: "#6b7b8d" },
+      ]},
+      { title: "Performance", fields: [
+        { label: "Accuracy", value: 94, type: "bar", color: "#51cf66" },
+        { label: "Latency", value: "<300ms", color: "#f97316" },
+        { label: "Training pairs", value: "1,528", color: "#c8d6e5" },
+      ]},
+      { title: "Routing", fields: [
+        { label: "Simple", value: "MoE", type: "list", color: "#51cf66" },
+        { label: "Medium", value: "MoE → Dense", type: "list", color: "#ffd43b" },
+        { label: "Complex", value: "Dense → Claude", type: "list", color: "#ff6b6b" },
+      ]},
+    ],
+    actions: [
+      { label: "Retrain", color: "#f97316", callback: () => console.log("retrain") },
+      { label: "View logs", color: "#4dabf7", callback: () => console.log("logs") },
+    ],
+  },
+  moe: {
+    nodeId: "moe", title: "Qwen3.5 MoE 35B-A3B", subtitle: "Fast concurrent workhorse",
+    color: "#22d3ee",
+    sections: [
+      { title: "Model", fields: [
+        { label: "Parameters", value: "35B (3B active)", color: "#22d3ee" },
+        { label: "Speed", value: "83 tok/s", color: "#51cf66" },
+        { label: "VRAM", value: "22 GB", color: "#c8d6e5" },
+        { label: "Parallel", value: "4 slots", color: "#c8d6e5" },
+      ]},
+      { title: "Routing", fields: [
+        { label: "Tier", value: "Simple + Medium", type: "badge", color: "#51cf66" },
+        { label: "Cost", value: "FREE (local)", type: "badge", color: "#51cf66" },
+      ]},
+    ],
+  },
+  dense: {
+    nodeId: "dense", title: "Qwen3.5 Dense 27B", subtitle: "Quality reasoning engine",
+    color: "#a78bfa",
+    sections: [
+      { title: "Model", fields: [
+        { label: "Parameters", value: "27B (all active)", color: "#a78bfa" },
+        { label: "Speed", value: "2 tok/s", color: "#ffd43b" },
+        { label: "VRAM", value: "12 GB (40 layers GPU)", color: "#c8d6e5" },
+        { label: "Quality", value: "SWE-bench 72.4%", color: "#51cf66" },
+      ]},
+      { title: "Routing", fields: [
+        { label: "Tier", value: "Complex (quality)", type: "badge", color: "#a78bfa" },
+        { label: "Cost", value: "FREE (local)", type: "badge", color: "#51cf66" },
+      ]},
+    ],
+  },
+  claude: {
+    nodeId: "claude", title: "Claude CLI (Sonnet)", subtitle: "Anthropic Max Pro subscription",
+    color: "#ff6b6b",
+    sections: [
+      { title: "Access", fields: [
+        { label: "Model", value: "claude-sonnet-4-5", color: "#ff6b6b" },
+        { label: "Plan", value: "Max Pro", type: "badge", color: "#ff6b6b" },
+        { label: "Context", value: "200K tokens", color: "#c8d6e5" },
+      ]},
+      { title: "Usage", fields: [
+        { label: "Role", value: "Escalation + Planning", color: "#ffd43b" },
+        { label: "Cost", value: "Subscription", type: "badge", color: "#ff6b6b" },
+      ]},
+    ],
+  },
+  gpt52: {
+    nodeId: "gpt52", title: "GPT-5.2 (Copilot)", subtitle: "GitHub Copilot subscription",
+    color: "#51cf66",
+    sections: [
+      { title: "Access", fields: [
+        { label: "Provider", value: "GitHub Copilot", color: "#51cf66" },
+        { label: "Tier", value: "Medium fallback", type: "badge", color: "#ffd43b" },
+        { label: "Context", value: "128K tokens", color: "#c8d6e5" },
+      ]},
+    ],
+  },
+  nats: {
+    nodeId: "nats", title: "NATS JetStream", subtitle: "Inter-service messaging backbone",
+    color: "#ffd43b",
+    sections: [
+      { title: "Server", fields: [
+        { label: "Version", value: "v2.10.24", color: "#ffd43b" },
+        { label: "Port", value: "4222", color: "#6b7b8d" },
+      ]},
+      { title: "Streams", fields: [
+        { label: "ROUTING", value: "7d retention", type: "list", color: "#51cf66" },
+        { label: "MISSIONS", value: "30d retention", type: "list", color: "#ffd43b" },
+        { label: "FEEDBACK", value: "30d work queue", type: "list", color: "#ff6b6b" },
+        { label: "DREAMS", value: "90d retention", type: "list", color: "#a78bfa" },
+      ]},
+    ],
+  },
+  agentsmith: {
+    nodeId: "agentsmith", title: "AgentSmith", subtitle: "Mission orchestrator",
+    color: "#00d4aa",
+    sections: [
+      { title: "Dashboard", fields: [
+        { label: "Port", value: "8042", color: "#6b7b8d" },
+        { label: "Workers", value: "Arthur, Trillian, Ants", color: "#00d4aa" },
+      ]},
+      { title: "Capabilities", fields: [
+        { label: "Missions", value: "Plan + dispatch + verify", type: "list", color: "#c8d6e5" },
+        { label: "Governance", value: "Scan + fix + audit", type: "list", color: "#c8d6e5" },
+        { label: "Dreams", value: "Babelfish introspection", type: "list", color: "#a78bfa" },
+      ]},
+    ],
+    actions: [
+      { label: "Launch mission", color: "#00d4aa", callback: () => console.log("launch") },
+      { label: "Scan all", color: "#51cf66", callback: () => console.log("scan") },
+    ],
+  },
+};
+
+// Wire single-click on graph nodes to show detail panel
+// We need to add click handling - use mousedown + mouseup without drag
+let nodeClickStart: { x: number; y: number; time: number } | null = null;
+const canvas = hud.renderer["canvas"] as HTMLCanvasElement;
+
+canvas.addEventListener("mousedown", (e: MouseEvent) => {
+  const rect = canvas.parentElement!.getBoundingClientRect();
+  nodeClickStart = { x: e.clientX - rect.left, y: e.clientY - rect.top, time: Date.now() };
+});
+
+canvas.addEventListener("mouseup", (e: MouseEvent) => {
+  if (!nodeClickStart) return;
+  const rect = canvas.parentElement!.getBoundingClientRect();
+  const point = { x: e.clientX - rect.left, y: e.clientY - rect.top };
+  const dx = point.x - nodeClickStart.x;
+  const dy = point.y - nodeClickStart.y;
+  const dt = Date.now() - nodeClickStart.time;
+  nodeClickStart = null;
+
+  // Only trigger if it was a click (not a drag) — small movement + short duration
+  if (Math.abs(dx) > 5 || Math.abs(dy) > 5 || dt > 300) return;
+
+  const hitNode = graph.findNodeAt(point.x, point.y);
+  if (hitNode && nodeDetails[hitNode.id]) {
+    detailPanel.toggle(nodeDetails[hitNode.id]);
+  } else if (!hitNode) {
+    detailPanel.hide();
+  }
+});
+
 
 // --- Graph: Marvin Architecture ---
 const graph = new Graph({

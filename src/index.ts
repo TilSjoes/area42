@@ -43,3 +43,6 @@ export type { DataSource } from "./data/source.js";
 // Themes
 export { NeonTheme, GlassTheme } from "./themes/neon.js";
 export type { Theme } from "./themes/neon.js";
+
+export { DetailPanel } from "./panels/detail.js";
+export type { NodeDetail, DetailSection, DetailField } from "./panels/detail.js";
