@@ -326,9 +326,10 @@ sse.on("mission_event", (_data: any) => {
   graph.pulse("agentsmith", "#4dabf7");
 });
 
-// keepalive: just update the timestamp
+// keepalive: mark SSE as alive and connected
 sse.on("keepalive", () => {
   lastEventTime = Date.now();
+  sseConnected = true;
 });
 
 // Generic message handler (SSESource dispatches by data.type)
@@ -353,8 +354,8 @@ sse.connect().then(() => {
 
   // Watchdog: if no events for 5s, fall back to simulation
   fallbackTimer = setInterval(() => {
-    if (Date.now() - lastEventTime > 5000 && !simulationRunning) {
-      console.log("Area42: No SSE events for 5s, starting simulation fallback");
+    if (Date.now() - lastEventTime > 20000 && !simulationRunning) {
+      console.log("Area42: No SSE events for 20s, starting simulation fallback");
       sseConnected = false;
       startSimulation();
     }
