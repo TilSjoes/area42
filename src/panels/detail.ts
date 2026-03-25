@@ -8,6 +8,7 @@
 
 import { Panel } from "./panel.js";
 import type { Vec2 } from "../core/scene.js";
+import { withAlpha } from "../core/color.js";
 
 export interface DetailField {
   label: string;
@@ -160,7 +161,7 @@ export class DetailPanel extends Panel {
         const fieldColor = field.color || "#c8d6e5";
 
         if (field.type === "badge") {
-          ctx.fillStyle = fieldColor + "22";
+          ctx.fillStyle = withAlpha(fieldColor, "22");
           const badgeWidth = ctx.measureText(String(field.value)).width + 12;
           this.drawRoundRect(ctx, panelW - 12 - badgeWidth, y - 10, badgeWidth, 16, 3);
           ctx.fill();
@@ -223,10 +224,10 @@ export class DetailPanel extends Panel {
       for (const action of d.actions) {
         const color = action.color || "#4dabf7";
         const tw = ctx.measureText(action.label).width + 16;
-        ctx.fillStyle = color + "22";
+        ctx.fillStyle = withAlpha(color, "22");
         this.drawRoundRect(ctx, ax, y - 10, tw, 20, 4);
         ctx.fill();
-        ctx.strokeStyle = color + "44";
+        ctx.strokeStyle = withAlpha(color, "44");
         this.drawRoundRect(ctx, ax, y - 10, tw, 20, 4);
         ctx.stroke();
         ctx.fillStyle = color;

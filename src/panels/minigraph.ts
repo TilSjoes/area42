@@ -7,6 +7,7 @@
  */
 
 import { NeonTheme } from "../themes/neon.js";
+import { withAlpha } from "../core/color.js";
 
 export interface MiniNode {
   id: string;
@@ -82,8 +83,8 @@ export class MiniGraph {
       // Line
       ctx.save();
       const grad = ctx.createLinearGradient(from.x, from.y, to.x, to.y);
-      grad.addColorStop(0, fromColor + "88");
-      grad.addColorStop(1, toColor + "88");
+      grad.addColorStop(0, withAlpha(fromColor, "88"));
+      grad.addColorStop(1, withAlpha(toColor, "88"));
       ctx.strokeStyle = grad;
       ctx.lineWidth = 1.5;
       ctx.beginPath();
@@ -95,7 +96,7 @@ export class MiniGraph {
       const ax = to.x - nodeRadius - 2;
       const ay = to.y;
       const arrowSize = 5;
-      ctx.fillStyle = toColor + "aa";
+      ctx.fillStyle = withAlpha(toColor, "aa");
       ctx.beginPath();
       ctx.moveTo(ax, ay);
       ctx.lineTo(ax - arrowSize, ay - arrowSize * 0.6);
@@ -131,7 +132,7 @@ export class MiniGraph {
       // Outer circle
       ctx.beginPath();
       ctx.arc(pos.x, pos.y, nodeRadius, 0, Math.PI * 2);
-      ctx.fillStyle = color + "33";
+      ctx.fillStyle = withAlpha(color, "33");
       ctx.fill();
 
       // Inner circle

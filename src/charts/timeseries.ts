@@ -6,6 +6,7 @@
  */
 
 import { NeonTheme } from "../themes/neon.js";
+import { withAlpha } from "../core/color.js";
 
 /** A single data point with timestamp and value */
 export interface TimeSeriesPoint {
@@ -97,7 +98,7 @@ export class TimeSeries {
     if (this.data.length < 2) {
       // Not enough data -- draw placeholder line
       ctx.save();
-      ctx.strokeStyle = this.color + "33";
+      ctx.strokeStyle = withAlpha(this.color, "33");
       ctx.lineWidth = 1;
       ctx.setLineDash([4, 4]);
       ctx.beginPath();
@@ -147,7 +148,7 @@ export class TimeSeries {
 
     const grad = ctx.createLinearGradient(x, y, x, y + h);
     grad.addColorStop(0, this.color + Math.round(this.fillOpacity * 255).toString(16).padStart(2, "0"));
-    grad.addColorStop(1, this.color + "00");
+    grad.addColorStop(1, withAlpha(this.color, "00"));
     ctx.fillStyle = grad;
     ctx.fill();
 

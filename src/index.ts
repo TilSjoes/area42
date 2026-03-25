@@ -55,3 +55,5 @@ export type { MiniNode, MiniEdge } from "./panels/minigraph.js";
 export { DetailPanel } from "./panels/detail.js";
 export { ContextMenu } from "./panels/contextmenu.js";export type { MenuItem } from "./panels/contextmenu.js";export { HelpOverlay } from "./panels/helpoverlay.js";
 export type { NodeDetail, DetailSection, DetailField } from "./panels/detail.js";
+
+export { withAlpha } from "./core/color.js";

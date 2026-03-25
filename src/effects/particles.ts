@@ -6,6 +6,7 @@
  */
 
 import { Vec2 } from "../core/scene.js";
+import { withAlpha } from "../core/color.js";
 
 /** Options for burst emission */
 export interface EmitOptions {
@@ -152,8 +153,8 @@ export class ParticleSystem {
       // Soft glow via radial gradient
       const grad = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, r * 3);
       grad.addColorStop(0, p.color);
-      grad.addColorStop(0.4, p.color + "88");
-      grad.addColorStop(1, p.color + "00");
+      grad.addColorStop(0.4, withAlpha(p.color, "88"));
+      grad.addColorStop(1, withAlpha(p.color, "00"));
       ctx.fillStyle = grad;
       ctx.beginPath();
       ctx.arc(p.x, p.y, r * 3, 0, Math.PI * 2);

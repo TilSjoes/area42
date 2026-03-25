@@ -7,6 +7,7 @@
 
 import type { Vec2 } from "../core/scene.js";
 import { NeonTheme } from "../themes/neon.js";
+import { withAlpha } from "../core/color.js";
 
 export interface MenuItem {
   label: string;
@@ -114,7 +115,7 @@ export class ContextMenu {
     ctx.clip();
     const grad = ctx.createLinearGradient(x, y, x + w, y);
     grad.addColorStop(0, "transparent");
-    grad.addColorStop(0.5, NeonTheme.accent + "66");
+    grad.addColorStop(0.5, withAlpha(NeonTheme.accent, "66"));
     grad.addColorStop(1, "transparent");
     ctx.fillStyle = grad;
     ctx.fillRect(x, y, w, 1.5);
@@ -139,7 +140,7 @@ export class ContextMenu {
 
       // Hover highlight
       if (i === this.hoveredIndex && !item.disabled) {
-        ctx.fillStyle = NeonTheme.accent + "22";
+        ctx.fillStyle = withAlpha(NeonTheme.accent, "22");
         ctx.beginPath();
         this.roundRect(ctx, x + 4, iy + 1, w - 8, ITEM_HEIGHT - 2, 4);
         ctx.fill();

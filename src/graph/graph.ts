@@ -9,6 +9,7 @@
 import { SceneNode, Vec2 } from "../core/scene.js";
 import { ParticleSystem } from "../effects/particles.js";
 import { NeonTheme } from "../themes/neon.js";
+import { withAlpha } from "../core/color.js";
 
 /** Options for creating a graph node */
 export interface GraphNodeOptions {
@@ -287,7 +288,7 @@ export class Graph extends SceneNode {
         new GraphEdge({
           from: nodeId,
           to: child.id,
-          color: parent.color + "66",
+          color: withAlpha(parent.color, "66"),
           width: 0.8,
           particles: false,
         }),
@@ -500,7 +501,7 @@ export class Graph extends SceneNode {
       // Node glow
       ctx.shadowColor = node.glow;
       ctx.shadowBlur = 15;
-      ctx.fillStyle = node.color + "33";
+      ctx.fillStyle = withAlpha(node.color, "33");
       this.drawShape(ctx, nx, ny, node.radius, node.shape);
       ctx.fill();
 
@@ -550,8 +551,8 @@ export class Graph extends SceneNode {
       if (node.isWell) {
         ctx.save();
         const gradient = ctx.createRadialGradient(nx, ny, 0, nx, ny, node.wellRadius);
-        gradient.addColorStop(0, node.color + "08");
-        gradient.addColorStop(0.5, node.color + "04");
+        gradient.addColorStop(0, withAlpha(node.color, "08"));
+        gradient.addColorStop(0.5, withAlpha(node.color, "04"));
         gradient.addColorStop(1, "transparent");
         ctx.fillStyle = gradient;
         ctx.beginPath();

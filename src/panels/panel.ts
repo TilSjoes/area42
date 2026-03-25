@@ -6,6 +6,7 @@
  */
 
 import { SceneNode, Vec2 } from "../core/scene.js";
+import { withAlpha } from "../core/color.js";
 
 export interface PanelOptions {
   id?: string;
@@ -107,7 +108,7 @@ export class Panel extends SceneNode {
     // Handle both hex (#ff6b6b) and rgba() color formats
     let gradColor = this.titleColor;
     if (gradColor.startsWith("#")) {
-      gradColor = gradColor + "88";
+      gradColor = withAlpha(gradColor, "88");
     } else if (gradColor.startsWith("rgb")) {
       gradColor = gradColor.replace(/[\d.]+\)\$/, "0.5)");
     }

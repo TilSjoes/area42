@@ -7,6 +7,7 @@
  */
 
 import { NeonTheme } from "../themes/neon.js";
+import { withAlpha } from "../core/color.js";
 
 export interface TableColumn {
   key: string;
@@ -119,13 +120,13 @@ export class Table {
 
       // Row highlight color
       if (row._color) {
-        ctx.fillStyle = row._color + "11";
+        ctx.fillStyle = withAlpha(row._color, "11");
         ctx.fillRect(x, ry, w, this.rowHeight);
       }
 
       // Selected row
       if (i === this.selectedRow) {
-        ctx.fillStyle = NeonTheme.accent + "15";
+        ctx.fillStyle = withAlpha(NeonTheme.accent, "15");
         ctx.fillRect(x, ry, w, this.rowHeight);
         ctx.fillStyle = NeonTheme.accent;
         ctx.fillRect(x, ry, 2, this.rowHeight);
@@ -158,11 +159,11 @@ export class Table {
         const badgeX = x + w - badgeW - 6;
         const badgeY = ry + (this.rowHeight - badgeH) / 2;
 
-        ctx.fillStyle = badgeColor + "22";
+        ctx.fillStyle = withAlpha(badgeColor, "22");
         this.roundRect(ctx, badgeX, badgeY, badgeW, badgeH, 3);
         ctx.fill();
 
-        ctx.strokeStyle = badgeColor + "44";
+        ctx.strokeStyle = withAlpha(badgeColor, "44");
         ctx.lineWidth = 0.5;
         this.roundRect(ctx, badgeX, badgeY, badgeW, badgeH, 3);
         ctx.stroke();

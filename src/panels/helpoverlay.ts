@@ -6,6 +6,7 @@
  */
 
 import { NeonTheme } from "../themes/neon.js";
+import { withAlpha } from "../core/color.js";
 
 const HELP_SECTIONS = [
   {
@@ -113,7 +114,7 @@ export class HelpOverlay {
     ctx.clip();
     const grad = ctx.createLinearGradient(x, y, x + TOTAL_WIDTH, y);
     grad.addColorStop(0, "transparent");
-    grad.addColorStop(0.3, NeonTheme.accent + "88");
+    grad.addColorStop(0.3, withAlpha(NeonTheme.accent, "88"));
     grad.addColorStop(0.7, "#7b68ee88");
     grad.addColorStop(1, "transparent");
     ctx.fillStyle = grad;
