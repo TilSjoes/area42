@@ -2,7 +2,8 @@
  * Area42 Demo — Marvin Architecture Visualization
  *
  * Interactive force-directed graph of the Marvin routing infrastructure
- * with live particles, sparklines, metric displays, and simulated events.
+ * with live particles, sparklines, metric displays, and real SSE events
+ * from AgentSmith (with simulation fallback).
  */
 import { HUD } from "../core/hud.js";
 import { Graph } from "../graph/graph.js";
@@ -179,48 +180,49 @@ spinePanel.onContent((ctx, x, y, w, h) => {
   spineMetrics.render(ctx, x, y, w, h);
 });
 
-// --- Event Simulation ---
-// Simulates events arriving (routing decisions, cost updates, pulses)
-
+// --- Shared metrics state ---
 let requestCount = 0;
 let totalCost = 0;
 let simpleCount = 0;
 let mediumCount = 0;
 let complexCount = 0;
 
-const tiers = ["simple", "medium", "complex"] as const;
-const tierWeights = [0.15, 0.55, 0.30]; // probability distribution
-const tierCosts = { simple: 0.001, medium: 0.008, complex: 0.035 };
-const tierTargets: Record<string, string[]> = {
-  simple: ["moe"],
-  medium: ["moe", "dense"],
-  complex: ["claude", "gpt52"],
+/** Backend name to graph node ID mapping */
+const backendToNode: Record<string, string> = {
+  qwen35_moe: "moe",
+  qwen35_dense: "dense",
+  claude_cli: "claude",
+  gpt52: "gpt52",
 };
 
-function pickTier(): "simple" | "medium" | "complex" {
-  const r = Math.random();
-  if (r < tierWeights[0]) return "simple";
-  if (r < tierWeights[0] + tierWeights[1]) return "medium";
-  return "complex";
-}
+/** Tier to color mapping */
+const tierColor: Record<string, string> = {
+  simple: NeonTheme.success,    // green
+  medium: NeonTheme.warning,    // yellow
+  complex: NeonTheme.danger,    // red
+};
 
-function simulateEvent() {
-  const tier = pickTier();
+/** Tier to approximate cost per request */
+const tierCosts: Record<string, number> = { simple: 0.001, medium: 0.008, complex: 0.035 };
+
+/** Process a routing event (from SSE or simulation) */
+function handleRouteEvent(tier: string, backend: string, totalMs?: number, tokensOut?: number, costUsd?: number) {
   requestCount++;
-  const cost = tierCosts[tier] * (0.5 + Math.random());
+  const cost = costUsd ?? tierCosts[tier] * (0.5 + Math.random());
   totalCost += cost;
 
   if (tier === "simple") simpleCount++;
   else if (tier === "medium") mediumCount++;
   else complexCount++;
 
-  // Update metrics
+  // Update cost panel metrics
   costMetrics.set("Total Cost", "$" + totalCost.toFixed(2), NeonTheme.success);
   costMetrics.set("Requests", requestCount);
   const savedPct = Math.round(((simpleCount + mediumCount * 0.5) / requestCount) * 100);
   costMetrics.set("Saved", savedPct + "%", NeonTheme.accent);
-  costMetrics.set("Local", `${simpleCount + mediumCount} / ${requestCount}`);
+  costMetrics.set("Local", simpleCount + mediumCount + " / " + requestCount);
 
+  // Update router panel tier percentages
   const simplePct = Math.round((simpleCount / requestCount) * 100);
   const mediumPct = Math.round((mediumCount / requestCount) * 100);
   const complexPct = Math.round((complexCount / requestCount) * 100);
@@ -230,21 +232,23 @@ function simulateEvent() {
 
   // Push to time series
   costSeries.push(totalCost);
-  tokenSeries.push(Math.round(Math.random() * 8000 + 500));
+  tokenSeries.push(tokensOut ?? Math.round(Math.random() * 8000 + 500));
 
   // Update spine latency
-  spineMetrics.set("Latency", Math.round(200 + Math.random() * 300) + "ms", "#f97316");
+  spineMetrics.set("Latency", (totalMs ?? Math.round(200 + Math.random() * 300)) + "ms", "#f97316");
 
-  // Pulse the spine node (all requests go through classification)
+  // Resolve the target node
+  const targetNodeId = backendToNode[backend] ?? "moe";
+
+  // 1) Spawn particle from AgentSmith to Spine (cyan, classification)
+  graph.particle("agentsmith", "spine", { color: "#22d3ee", speed: 0.6 });
   graph.pulse("spine", "#f97316");
 
-  // After a short delay, pulse the target model node
-  const targets = tierTargets[tier];
-  const target = targets[Math.floor(Math.random() * targets.length)];
+  // 2) After a short delay, spawn particle from Spine to target model (color by tier)
+  const color = tierColor[tier] ?? "#ffffff";
   setTimeout(() => {
-    graph.pulse(target);
-    // Spawn extra particle from spine to target
-    graph.particle("spine", target, { color: graph.getNode(target)?.color ?? "#00d4aa", speed: 0.6 });
+    graph.particle("spine", targetNodeId, { color, speed: 0.6 });
+    graph.pulse(targetNodeId);
   }, 300);
 
   // NATS gets a pulse occasionally
@@ -253,63 +257,122 @@ function simulateEvent() {
   }
 }
 
-// Start simulation: event every 1-3 seconds
-function scheduleEvent() {
+// --- Simulation fallback ---
+const tierWeights = [0.15, 0.55, 0.30];
+const tierTargets: Record<string, string[]> = {
+  simple: ["qwen35_moe"],
+  medium: ["qwen35_moe", "qwen35_dense"],
+  complex: ["claude_cli", "gpt52"],
+};
+
+function pickTier(): "simple" | "medium" | "complex" {
+  const r = Math.random();
+  if (r < tierWeights[0]) return "simple";
+  if (r < tierWeights[0] + tierWeights[1]) return "medium";
+  return "complex";
+}
+
+let simulationRunning = false;
+let simulationTimer: ReturnType<typeof setTimeout> | null = null;
+
+function startSimulation() {
+  if (simulationRunning) return;
+  simulationRunning = true;
+  console.log("Area42: Starting simulation fallback (no SSE events)");
+  scheduleSimEvent();
+}
+
+function stopSimulation() {
+  simulationRunning = false;
+  if (simulationTimer) {
+    clearTimeout(simulationTimer);
+    simulationTimer = null;
+  }
+}
+
+function scheduleSimEvent() {
+  if (!simulationRunning) return;
   const delay = 1000 + Math.random() * 2000;
-  setTimeout(() => {
-    simulateEvent();
-    scheduleEvent();
+  simulationTimer = setTimeout(() => {
+    const tier = pickTier();
+    const targets = tierTargets[tier];
+    const backend = targets[Math.floor(Math.random() * targets.length)];
+    handleRouteEvent(tier, backend);
+    scheduleSimEvent();
   }, delay);
 }
-scheduleEvent();
 
-// --- Try connecting to real SSE source (falls back to simulation gracefully) ---
-const sse = new SSESource("/api/events");
-sse.on("routing", (data: any) => {
-  // If we get real events, pulse the relevant nodes
-  if (data.model) {
-    const nodeId = data.model.includes("qwen") ? "moe" : data.model.includes("claude") ? "claude" : "gpt52";
-    graph.pulse(nodeId);
+// --- Real SSE connection to AgentSmith ---
+let lastEventTime = 0;
+let sseConnected = false;
+let fallbackTimer: ReturnType<typeof setInterval> | null = null;
+
+const sse = new SSESource("http://10.131.1.183:8042/api/events");
+
+sse.on("route_event", (data: any) => {
+  lastEventTime = Date.now();
+  if (!sseConnected) {
+    sseConnected = true;
+    stopSimulation();
+    console.log("Area42: Receiving real SSE events from AgentSmith");
   }
+  const tier = data.tier ?? "medium";
+  const backend = data.backend ?? "qwen35_moe";
+  handleRouteEvent(tier, backend, data.total_ms, data.tokens_out, data.cost_usd);
 });
+
+sse.on("mission_event", (_data: any) => {
+  lastEventTime = Date.now();
+  graph.pulse("agentsmith", "#4dabf7");
+});
+
+// keepalive: just update the timestamp
+sse.on("keepalive", () => {
+  lastEventTime = Date.now();
+});
+
+// Generic message handler (SSESource dispatches by data.type)
+sse.on("message", (data: any) => {
+  if (data.type === "route_event" || data.type === "mission_event" || data.type === "keepalive") {
+    return; // Already handled by specific handlers above
+  }
+  lastEventTime = Date.now();
+});
+
 sse.on("error", () => {
-  // SSE not available -- simulation is already running, no action needed
-});
-// Attempt connection (non-blocking)
-sse.connect().catch(() => {
-  // Silently fall back to simulation
-});
-
-// --- Drill-down demo ---
-// Double-click the AgentSmith node to expand its workers
-let agentSmithExpanded = false;
-const canvas = hud.renderer["canvas"] as HTMLCanvasElement;
-canvas.addEventListener("dblclick", (e: MouseEvent) => {
-  const rect = canvas.parentElement!.getBoundingClientRect();
-  const point = { x: e.clientX - rect.left, y: e.clientY - rect.top };
-
-  // Check if click is near the agentsmith node
-  const asNode = graph.getNode("agentsmith");
-  if (!asNode) return;
-  const wp = graph.worldPosition();
-  const nx = wp.x + graph["centerX"] + asNode.x;
-  const ny = wp.y + graph["centerY"] + asNode.y;
-  const dist = Math.sqrt((point.x - nx) ** 2 + (point.y - ny) ** 2);
-
-  if (dist < asNode.radius + 10) {
-    if (!agentSmithExpanded) {
-      graph.expand("agentsmith", [
-        { id: "worker-arthur", label: "Arthur", color: "#4dabf7", shape: "circle", size: 14 },
-        { id: "worker-trillian", label: "Trillian", color: "#4dabf7", shape: "circle", size: 14 },
-        { id: "worker-mac", label: "Mac", color: "#4dabf7", shape: "circle", size: 14 },
-      ]);
-      agentSmithExpanded = true;
-    } else {
-      graph.collapse("agentsmith");
-      agentSmithExpanded = false;
-    }
+  // SSE error: will auto-reconnect, but start simulation if no events yet
+  if (!simulationRunning && !sseConnected) {
+    startSimulation();
   }
 });
+
+// Attempt SSE connection
+sse.connect().then(() => {
+  lastEventTime = Date.now();
+  console.log("Area42: SSE connected to AgentSmith");
+
+  // Watchdog: if no events for 5s, fall back to simulation
+  fallbackTimer = setInterval(() => {
+    if (Date.now() - lastEventTime > 5000 && !simulationRunning) {
+      console.log("Area42: No SSE events for 5s, starting simulation fallback");
+      sseConnected = false;
+      startSimulation();
+    }
+    // If real events resume, stop simulation
+    if (sseConnected && simulationRunning) {
+      stopSimulation();
+    }
+  }, 2000);
+}).catch(() => {
+  console.log("Area42: SSE connection failed, using simulation");
+  startSimulation();
+});
+
+// --- Drill-down state: track which nodes are expanded ---
+const expandedNodes = new Set<string>();
+
+// Export for HUD double-click handler
+(window as any).__area42 = { graph, expandedNodes };
 
 console.log(
   "%c Area42 %c Marvin Architecture Visualization ",
@@ -317,4 +380,5 @@ console.log(
   "background: #131a2b; color: #c8d6e5; padding: 4px 8px;",
 );
 console.log("  Drag panels by their title bars. Double-click to collapse.");
-console.log("  Double-click the AgentSmith node to expand/collapse workers.");
+console.log("  Double-click graph nodes to expand/collapse details.");
+console.log("  Live SSE from AgentSmith with simulation fallback.");

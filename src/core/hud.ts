@@ -18,6 +18,32 @@ export interface HUDOptions {
   background?: boolean;
 }
 
+/** Drill-down child definitions for each expandable node */
+const drillDownDefs: Record<string, { id: string; label: string; color: string; shape: "circle" | "hexagon" | "diamond" | "rect"; size: number }[]> = {
+  agentsmith: [
+    { id: "worker-arthur", label: "Arthur", color: "#4dabf7", shape: "circle", size: 14 },
+    { id: "worker-trillian", label: "Trillian", color: "#4dabf7", shape: "circle", size: 14 },
+    { id: "worker-ants", label: "Ants", color: "#4dabf7", shape: "circle", size: 14 },
+  ],
+  spine: [
+    { id: "spine-pairs", label: "1528 pairs", color: "#f97316", shape: "circle", size: 12 },
+    { id: "spine-accuracy", label: "94.2% acc", color: "#51cf66", shape: "circle", size: 12 },
+    { id: "spine-latency", label: "<300ms", color: "#ffd43b", shape: "circle", size: 12 },
+  ],
+  nats: [
+    { id: "stream-routing", label: "ROUTING", color: "#ffd43b", shape: "rect", size: 12 },
+    { id: "stream-missions", label: "MISSIONS", color: "#ffd43b", shape: "rect", size: 12 },
+    { id: "stream-feedback", label: "FEEDBACK", color: "#ffd43b", shape: "rect", size: 12 },
+    { id: "stream-dreams", label: "DREAMS", color: "#ffd43b", shape: "rect", size: 12 },
+  ],
+  moe: [
+    { id: "moe-slot-1", label: "Slot 1", color: "#22d3ee", shape: "circle", size: 10 },
+    { id: "moe-slot-2", label: "Slot 2", color: "#22d3ee", shape: "circle", size: 10 },
+    { id: "moe-slot-3", label: "Slot 3", color: "#22d3ee", shape: "circle", size: 10 },
+    { id: "moe-slot-4", label: "Slot 4", color: "#22d3ee", shape: "circle", size: 10 },
+  ],
+};
+
 export class HUD {
   readonly renderer: Renderer;
   readonly scene: Scene;
@@ -30,7 +56,7 @@ export class HUD {
 
   constructor(selector: string | HTMLElement, options: HUDOptions = {}) {
     const el = typeof selector === "string" ? document.querySelector(selector) : selector;
-    if (!el) throw new Error(`Area42: container not found: ${selector}`);
+    if (!el) throw new Error("Area42: container not found: " + selector);
     this.container = el as HTMLElement;
 
     // Theme
@@ -259,6 +285,19 @@ export class HUD {
 
     canvas.addEventListener("dblclick", (e) => {
       const point = this.canvasPoint(e);
+
+      // Check graph nodes FIRST (before panels)
+      for (const child of this.scene.root.children) {
+        if (child instanceof Graph) {
+          const hitNode = child.findNodeAt(point.x, point.y);
+          if (hitNode) {
+            this.handleGraphNodeDblClick(child, hitNode);
+            return; // consumed the event
+          }
+        }
+      }
+
+      // Then check panel headers for collapse/expand
       const nodes = [...this.panels.values()].reverse();
       for (const panel of nodes) {
         if (panel.isInHeader(point)) {
@@ -267,6 +306,36 @@ export class HUD {
         }
       }
     });
+  }
+
+  /** Handle double-click on a graph node: expand or collapse drill-down */
+  private handleGraphNodeDblClick(graph: Graph, node: GraphNode) {
+    // Get the shared expanded state from main.ts via window
+    const area42 = (window as any).__area42;
+    const expandedNodes: Set<string> = area42?.expandedNodes ?? new Set();
+
+    const nodeId = node.id;
+
+    // If this is a child node (has parentId), collapse the parent instead
+    if (node.parentId) {
+      const parentId = node.parentId;
+      graph.collapse(parentId);
+      expandedNodes.delete(parentId);
+      return;
+    }
+
+    if (expandedNodes.has(nodeId)) {
+      // Collapse
+      graph.collapse(nodeId);
+      expandedNodes.delete(nodeId);
+    } else {
+      // Expand if we have drill-down definitions
+      const children = drillDownDefs[nodeId];
+      if (children) {
+        graph.expand(nodeId, children);
+        expandedNodes.add(nodeId);
+      }
+    }
   }
 
   private canvasPoint(e: MouseEvent): Vec2 {
