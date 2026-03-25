@@ -529,6 +529,44 @@ graph.addEdge({
   },
 });
 
+
+// --- Dynamic drill-down callback ---
+// This enables infinite depth: each node type resolves its children dynamically.
+// In production, this would call AgentSmith/BoringBank APIs.
+// For now, it uses static data as a demo — but the pattern is async-ready.
+graph.onExpand(async (nodeId, node) => {
+  // Example: could fetch from API
+  // const resp = await fetch(\`/api/node/\${nodeId}/children\`);
+  // return resp.json();
+
+  // Static demo data for nodes that don't have hardcoded expand
+  const dynamicChildren: Record<string, any[]> = {
+    "nats": [
+      { id: "nats-routing", label: "ROUTING", color: "#51cf66", shape: "rect" as const, size: 12 },
+      { id: "nats-missions", label: "MISSIONS", color: "#ffd43b", shape: "rect" as const, size: 12 },
+      { id: "nats-feedback", label: "FEEDBACK", color: "#ff6b6b", shape: "rect" as const, size: 12 },
+      { id: "nats-dreams", label: "DREAMS", color: "#a78bfa", shape: "rect" as const, size: 12 },
+    ],
+    "moe": [
+      { id: "moe-slot1", label: "Slot 1", color: "#22d3ee", shape: "circle" as const, size: 10 },
+      { id: "moe-slot2", label: "Slot 2", color: "#22d3ee", shape: "circle" as const, size: 10 },
+      { id: "moe-slot3", label: "Slot 3", color: "#22d3ee", shape: "circle" as const, size: 10 },
+      { id: "moe-slot4", label: "Slot 4", color: "#22d3ee", shape: "circle" as const, size: 10 },
+    ],
+    "spine": [
+      { id: "spine-train", label: "1528 pairs", color: "#f97316", shape: "diamond" as const, size: 10 },
+      { id: "spine-acc", label: "94.2% acc", color: "#51cf66", shape: "diamond" as const, size: 10 },
+      { id: "spine-lat", label: "<300ms", color: "#ffd43b", shape: "diamond" as const, size: 10 },
+    ],
+    "dense": [
+      { id: "dense-slot1", label: "Slot 1", color: "#a78bfa", shape: "circle" as const, size: 10 },
+      { id: "dense-slot2", label: "Slot 2", color: "#a78bfa", shape: "circle" as const, size: 10 },
+    ],
+  };
+
+  return dynamicChildren[nodeId] || null;
+});
+
 // Load saved node positions (sticky between sessions)
 const loaded = graph.loadPositions();
 if (loaded) {

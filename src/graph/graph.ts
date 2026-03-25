@@ -144,6 +144,7 @@ export class Graph extends SceneNode {
   private centerX = 0;
   private centerY = 0;
   private layoutType: LayoutType = "force";
+  private expandCallback: ((nodeId: string, node: GraphNode) => Promise<GraphNodeOptions[]> | GraphNodeOptions[] | null) | null = null;
   private simulationActive = true;
 
   /** Currently hovered edge (for highlight effect) */
@@ -808,6 +809,52 @@ export class Graph extends SceneNode {
     this.offsetY = 0;
     this.zoom = 1.0;
     this.reheat(1.0);
+  }
+
+  /**
+   * Register an async callback for dynamic drill-down.
+   * When a node is expanded, this callback fetches children from any source.
+   * Return GraphNodeOptions[] for children, or null to cancel expand.
+   *
+   * @example
+   * graph.onExpand(async (nodeId, node) => {
+   *   const resp = await fetch(\`/api/node/\${nodeId}/children\`);
+   *   return resp.json();
+   * });
+   */
+  onExpand(callback: (nodeId: string, node: GraphNode) => Promise<GraphNodeOptions[]> | GraphNodeOptions[] | null) {
+    this.expandCallback = callback;
+  }
+
+  /**
+   * Expand a node — uses async callback if registered, otherwise uses provided children.
+   * Call with children for static expand, or without for dynamic (callback-driven).
+   */
+  async expandAsync(nodeId: string, children?: GraphNodeOptions[]): Promise<void> {
+    const parent = this.nodes.get(nodeId);
+    if (!parent) return;
+
+    // If already expanded, collapse instead (toggle)
+    if (parent.childIds.length > 0) {
+      this.collapse(nodeId);
+      return;
+    }
+
+    // Get children: from argument, callback, or nothing
+    let childData = children;
+    if (!childData && this.expandCallback) {
+      const result = this.expandCallback(nodeId, parent);
+      if (result instanceof Promise) {
+        childData = await result ?? undefined;
+      } else {
+        childData = result ?? undefined;
+      }
+    }
+
+    if (!childData || childData.length === 0) return;
+
+    // Use the existing expand method
+    this.expand(nodeId, childData);
   }
 
   /** Reheat the simulation (e.g., after adding nodes or pulsing) */
