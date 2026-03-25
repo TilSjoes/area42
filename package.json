@@ -20,11 +20,25 @@
     "lint": "eslint src/",
     "test": "vitest"
   },
-  "keywords": ["hud", "visualization", "dashboard", "real-time", "canvas", "webgl", "monitoring", "agent", "nats"],
+  "keywords": [
+    "hud",
+    "visualization",
+    "dashboard",
+    "real-time",
+    "canvas",
+    "webgl",
+    "monitoring",
+    "agent",
+    "nats"
+  ],
   "author": "DONTPANIC AS <frode@dontpanic.no>",
   "license": "MIT",
   "repository": {
     "type": "git",
     "url": "https://github.com/TilSjoes/area42.git"
+  },
+  "devDependencies": {
+    "typescript": "^6.0.2",
+    "vite": "^8.0.2"
   }
 }
