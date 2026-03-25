@@ -44,5 +44,13 @@ export type { DataSource } from "./data/source.js";
 export { NeonTheme, GlassTheme } from "./themes/neon.js";
 export type { Theme } from "./themes/neon.js";
 
+// Table
+export { Table } from "./panels/table.js";
+export type { TableColumn, TableRow } from "./panels/table.js";
+
+// MiniGraph
+export { MiniGraph } from "./panels/minigraph.js";
+export type { MiniNode, MiniEdge } from "./panels/minigraph.js";
+
 export { DetailPanel } from "./panels/detail.js";
 export type { NodeDetail, DetailSection, DetailField } from "./panels/detail.js";

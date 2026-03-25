@@ -68,6 +68,8 @@ export class GraphNode {
   childIds: string[] = [];
   /** Parent node ID if this was added via expand() */
   parentId: string | null = null;
+  /** Whether this node is selected (multi-select) */
+  selected = false;
 
   constructor(options: GraphNodeOptions) {
     this.id = options.id;
@@ -362,6 +364,9 @@ export class Graph extends SceneNode {
     const ox = this.centerX;
     const oy = this.centerY;
 
+    // --- Check if any node is selected (for relationship highlighting) ---
+    const anySelected = Array.from(this.nodes.values()).some((n) => n.selected);
+
     // --- Render edges ---
     for (const edge of this.edges) {
       const fromNode = this.nodes.get(edge.from);
@@ -371,7 +376,22 @@ export class Graph extends SceneNode {
       ctx.save();
       ctx.strokeStyle = edge.color;
       ctx.lineWidth = edge.width;
-      ctx.globalAlpha = 0.6;
+
+      // Selection-aware edge opacity
+      if (anySelected) {
+        if (fromNode.selected && toNode.selected) {
+          ctx.globalAlpha = 1.0;
+          ctx.lineWidth = edge.width * 1.8;
+          ctx.shadowColor = edge.color;
+          ctx.shadowBlur = 8;
+        } else if (fromNode.selected || toNode.selected) {
+          ctx.globalAlpha = 0.4;
+        } else {
+          ctx.globalAlpha = 0.1;
+        }
+      } else {
+        ctx.globalAlpha = 0.6;
+      }
 
       if (edge.dashed) {
         ctx.setLineDash([6, 4]);
@@ -455,6 +475,31 @@ export class Graph extends SceneNode {
       this.drawShape(ctx, nx, ny, node.radius, node.shape);
       ctx.stroke();
 
+      // Selection glow ring
+      if (node.selected) {
+        ctx.beginPath();
+        ctx.arc(nx, ny, node.radius + 6, 0, Math.PI * 2);
+        ctx.strokeStyle = "#ffffff";
+        ctx.lineWidth = 2;
+        ctx.globalAlpha = 0.7;
+        ctx.shadowColor = node.color;
+        ctx.shadowBlur = 20;
+        ctx.stroke();
+        // Inner bright ring
+        ctx.beginPath();
+        ctx.arc(nx, ny, node.radius + 3, 0, Math.PI * 2);
+        ctx.strokeStyle = node.color;
+        ctx.lineWidth = 1.5;
+        ctx.globalAlpha = 0.9;
+        ctx.shadowBlur = 12;
+        ctx.stroke();
+      }
+
+      // Dim unselected nodes when any selection is active
+      if (anySelected && !node.selected) {
+        ctx.globalAlpha = 0.35;
+      }
+
       ctx.restore();
 
       // Gravity well visualization
@@ -525,6 +570,24 @@ export class Graph extends SceneNode {
         ctx.rect(cx - r, cy - r * 0.7, r * 2, r * 1.4);
         break;
     }
+  }
+
+  /** Clear selection on all nodes */
+  clearSelection(): void {
+    for (const node of this.nodes.values()) {
+      node.selected = false;
+    }
+  }
+
+  /** Toggle selection on a single node */
+  toggleSelection(nodeId: string): void {
+    const node = this.nodes.get(nodeId);
+    if (node) node.selected = !node.selected;
+  }
+
+  /** Get all selected nodes */
+  getSelectedNodes(): GraphNode[] {
+    return Array.from(this.nodes.values()).filter((n) => n.selected);
   }
 
   /**

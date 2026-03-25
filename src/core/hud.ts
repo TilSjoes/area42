@@ -230,10 +230,36 @@ export class HUD {
         if (child instanceof Graph) {
           const hitNode = child.findNodeAt(point.x, point.y);
           if (hitNode) {
+            // Shift+click: toggle multi-select
+            if (e.shiftKey) {
+              child.toggleSelection(hitNode.id);
+              return;
+            }
             this.dragNode = hitNode;
             this.dragGraph = child;
             child.startNodeDrag(hitNode);
             return;
+          }
+        }
+      }
+
+      // Click on empty space without shift clears selection
+      if (!e.shiftKey) {
+        let clickedPanel = false;
+        for (const panel of nodes) {
+          const wp = panel.worldPosition();
+          const ph = panel.collapsed ? 28 : panel.size.y;
+          if (point.x >= wp.x && point.x <= wp.x + panel.size.x &&
+              point.y >= wp.y && point.y <= wp.y + ph) {
+            clickedPanel = true;
+            break;
+          }
+        }
+        if (!clickedPanel) {
+          for (const child of this.scene.root.children) {
+            if (child instanceof Graph) {
+              child.clearSelection();
+            }
           }
         }
       }

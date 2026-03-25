@@ -28,6 +28,10 @@ export interface NodeDetail {
   color?: string;
   sections: DetailSection[];
   actions?: { label: string; color?: string; callback: () => void }[];
+  /** Optional custom table renderer (rendered after sections) */
+  _tableRenderer?: (ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number) => void;
+  /** Optional custom mini-graph renderer (rendered after sections) */
+  _miniGraphRenderer?: (ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number) => void;
 }
 
 let detailPanelCounter = 0;
@@ -96,6 +100,9 @@ export class DetailPanel extends Panel {
       h += 8; // section gap
     }
     if (d.actions) h += 30;
+    // Custom renderers get extra space
+    if (d._tableRenderer) h += 160;
+    if (d._miniGraphRenderer) h += 100;
     return h;
   }
 
@@ -227,6 +234,21 @@ export class DetailPanel extends Panel {
         ctx.fillText(action.label, ax + 8, y + 2);
         ax += tw + 8;
       }
+      y += 20;
+    }
+
+    // Custom mini-graph renderer
+    if (d._miniGraphRenderer) {
+      y += 8;
+      d._miniGraphRenderer(ctx, x, y, panelW - 24, 90);
+      y += 100;
+    }
+
+    // Custom table renderer
+    if (d._tableRenderer) {
+      y += 8;
+      d._tableRenderer(ctx, x, y, panelW - 24, 150);
+      y += 160;
     }
 
     ctx.restore(); // undo translate

@@ -15,6 +15,8 @@ import { TimeSeries } from "../charts/timeseries.js";
 import { MetricDisplay } from "../panels/metric.js";
 import { SSESource } from "../data/source.js";
 import { NeonTheme } from "../themes/neon.js";
+import { Table } from "../panels/table.js";
+import { MiniGraph } from "../panels/minigraph.js";
 
 // --- Initialize HUD ---
 const hud = new HUD("#hud", { theme: "neon" });
@@ -99,6 +101,55 @@ function toggleDetailPanel(nodeId: string, detail: NodeDetail) {
   detailPanels.set(nodeId, panel);
   detailPanelOrder.push(nodeId);
 }
+
+// --- Table: AgentSmith recent missions ---
+const missionTable = new Table([
+  { key: "mission", label: "Mission", width: 0.35 },
+  { key: "status", label: "Status", width: 0.2 },
+  { key: "duration", label: "Duration", width: 0.2, align: "right" },
+  { key: "worker", label: "Worker", width: 0.25 },
+]);
+missionTable.setData([
+  { mission: "Deploy Suits v2.1", status: "Done", duration: "4m 12s", worker: "Trillian", _badge: "OK", _badgeColor: NeonTheme.success },
+  { mission: "Scan governance", status: "Done", duration: "1m 38s", worker: "Arthur", _badge: "OK", _badgeColor: NeonTheme.success },
+  { mission: "Review PR #247", status: "Running", duration: "2m 05s", worker: "Trillian", _badge: "ACTIVE", _badgeColor: NeonTheme.warning },
+  { mission: "Train Spine v3", status: "Queued", duration: "-", worker: "Arthur", _badge: "QUEUED", _badgeColor: NeonTheme.textDim },
+  { mission: "Update CLAUDE.md", status: "Done", duration: "0m 42s", worker: "Arthur", _badge: "OK", _badgeColor: NeonTheme.success },
+  { mission: "AML flag check", status: "Failed", duration: "3m 11s", worker: "Ants", _badge: "FAIL", _badgeColor: NeonTheme.danger },
+  { mission: "Build BoringBank", status: "Done", duration: "12m 04s", worker: "Trillian", _badge: "OK", _badgeColor: NeonTheme.success },
+  { mission: "Memory sync", status: "Done", duration: "0m 18s", worker: "Arthur", _badge: "OK", _badgeColor: NeonTheme.success },
+]);
+
+// --- MiniGraph: NATS message flow ---
+const natsFlow = new MiniGraph(
+  [
+    { id: "pub", label: "Publisher", status: "completed" },
+    { id: "nats-core", label: "NATS", status: "running" },
+    { id: "consumer", label: "Consumer", status: "completed" },
+    { id: "handler", label: "Handler", status: "running" },
+  ],
+  [
+    { from: "pub", to: "nats-core" },
+    { from: "nats-core", to: "consumer" },
+    { from: "consumer", to: "handler" },
+  ],
+);
+
+// --- Table: Spine classification examples ---
+const spineClassTable = new Table([
+  { key: "input", label: "Input", width: 0.35 },
+  { key: "tier", label: "Tier", width: 0.2 },
+  { key: "confidence", label: "Conf", width: 0.2, align: "right" },
+  { key: "model", label: "Model", width: 0.25 },
+]);
+spineClassTable.setData([
+  { input: "What time is it?", tier: "simple", confidence: "0.97", model: "MoE", _badge: "SIMPLE", _badgeColor: NeonTheme.success },
+  { input: "Explain transformers", tier: "medium", confidence: "0.84", model: "MoE", _badge: "MEDIUM", _badgeColor: NeonTheme.warning },
+  { input: "Refactor auth module", tier: "complex", confidence: "0.91", model: "Dense", _badge: "COMPLEX", _badgeColor: NeonTheme.danger },
+  { input: "List running services", tier: "simple", confidence: "0.95", model: "MoE", _badge: "SIMPLE", _badgeColor: NeonTheme.success },
+  { input: "Design AML pipeline", tier: "complex", confidence: "0.88", model: "Claude", _badge: "COMPLEX", _badgeColor: NeonTheme.danger },
+  { input: "Translate to Norwegian", tier: "medium", confidence: "0.79", model: "Dense", _badge: "MEDIUM", _badgeColor: NeonTheme.warning },
+]);
 
 // Node detail definitions
 const nodeDetails: Record<string, NodeDetail> = {
@@ -201,6 +252,9 @@ const nodeDetails: Record<string, NodeDetail> = {
         { label: "DREAMS", value: "90d retention", type: "list", color: "#a78bfa" },
       ]},
     ],
+    _miniGraphRenderer: (ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number) => {
+      natsFlow.render(ctx, x, y, w, h);
+    },
   },
   agentsmith: {
     nodeId: "agentsmith", title: "AgentSmith", subtitle: "Mission orchestrator",
@@ -220,6 +274,9 @@ const nodeDetails: Record<string, NodeDetail> = {
       { label: "Launch mission", color: "#00d4aa", callback: () => console.log("launch") },
       { label: "Scan all", color: "#51cf66", callback: () => console.log("scan") },
     ],
+    _tableRenderer: (ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number) => {
+      missionTable.render(ctx, x, y, w, h);
+    },
   },
 };
 
