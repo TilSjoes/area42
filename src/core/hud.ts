@@ -390,6 +390,46 @@ export class HUD {
         }
       }
     });
+
+    // --- Touch support (iPad/tablet) ---
+    let lastTouchTime = 0;
+    let touchMoved = false;
+
+    canvas.addEventListener("touchstart", (e: TouchEvent) => {
+      e.preventDefault();
+      if (e.touches.length !== 1) return;
+      const touch = e.touches[0];
+      touchMoved = false;
+      const now = Date.now();
+      const mouseEvent = new MouseEvent("mousedown", {
+        clientX: touch.clientX, clientY: touch.clientY,
+      });
+      canvas.dispatchEvent(mouseEvent);
+      if (now - lastTouchTime < 300) {
+        const dblEvent = new MouseEvent("dblclick", {
+          clientX: touch.clientX, clientY: touch.clientY,
+        });
+        canvas.dispatchEvent(dblEvent);
+      }
+      lastTouchTime = now;
+    }, { passive: false });
+
+    canvas.addEventListener("touchmove", (e: TouchEvent) => {
+      e.preventDefault();
+      if (e.touches.length !== 1) return;
+      touchMoved = true;
+      const touch = e.touches[0];
+      const mouseEvent = new MouseEvent("mousemove", {
+        clientX: touch.clientX, clientY: touch.clientY,
+      });
+      canvas.dispatchEvent(mouseEvent);
+    }, { passive: false });
+
+    canvas.addEventListener("touchend", (e: TouchEvent) => {
+      e.preventDefault();
+      canvas.dispatchEvent(new MouseEvent("mouseup", {}));
+    }, { passive: false });
+
   }
 
   /** Handle double-click on a graph node: expand or collapse drill-down */
@@ -436,3 +476,5 @@ export class HUD {
     this.renderer.destroy();
   }
 }
+
+
