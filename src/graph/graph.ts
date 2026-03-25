@@ -130,6 +130,13 @@ export class Graph extends SceneNode {
   private layoutType: LayoutType = "force";
   private simulationActive = true;
 
+  // Pan and zoom state
+  offsetX = 0;
+  offsetY = 0;
+  zoom = 1.0;
+  private readonly ZOOM_MIN = 0.3;
+  private readonly ZOOM_MAX = 3.0;
+
   // Force parameters
   private repulsionStrength = -400;
   private springLength = 150;
@@ -361,6 +368,10 @@ export class Graph extends SceneNode {
    * Render the graph: edges, nodes, labels, particles.
    */
   override render(ctx: CanvasRenderingContext2D): void {
+    ctx.save();
+    ctx.translate(this.offsetX, this.offsetY);
+    ctx.scale(this.zoom, this.zoom);
+
     const ox = this.centerX;
     const oy = this.centerY;
 
@@ -525,6 +536,8 @@ export class Graph extends SceneNode {
       ctx.fillText(node.label, nx, ny + node.radius + 4);
       ctx.restore();
     }
+
+    ctx.restore(); // undo zoom/pan transform
 
     // --- Render particles (in world space, so translate back) ---
     ctx.save();
@@ -696,6 +709,79 @@ export class Graph extends SceneNode {
     }
   }
 
+  /** Toggle simulation pause/resume */
+  toggleSimulation(): void {
+    this.simulationActive = !this.simulationActive;
+    if (this.simulationActive) this.reheat(0.5);
+  }
+
+  /** Check if simulation is active */
+  isSimulationActive(): boolean {
+    return this.simulationActive;
+  }
+
+  /** Apply zoom centered on a screen point */
+  applyZoom(delta: number, canvasX: number, canvasY: number): void {
+    const oldZoom = this.zoom;
+    const factor = delta > 0 ? 0.9 : 1.1;
+    this.zoom = Math.max(this.ZOOM_MIN, Math.min(this.ZOOM_MAX, this.zoom * factor));
+
+    // Zoom toward cursor: adjust offsets so point under cursor stays fixed
+    const wp = this.worldPosition();
+    const cx = canvasX - wp.x;
+    const cy = canvasY - wp.y;
+    this.offsetX = cx - (cx - this.offsetX) * (this.zoom / oldZoom);
+    this.offsetY = cy - (cy - this.offsetY) * (this.zoom / oldZoom);
+  }
+
+  /** Fit all nodes into view */
+  fitToView(): void {
+    const nodes = Array.from(this.nodes.values());
+    if (nodes.length === 0) return;
+
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    for (const n of nodes) {
+      minX = Math.min(minX, n.x - n.radius);
+      minY = Math.min(minY, n.y - n.radius);
+      maxX = Math.max(maxX, n.x + n.radius);
+      maxY = Math.max(maxY, n.y + n.radius);
+    }
+
+    const graphW = maxX - minX + 80;
+    const graphH = maxY - minY + 80;
+    const scaleX = this.size.x / graphW;
+    const scaleY = this.size.y / graphH;
+    this.zoom = Math.max(this.ZOOM_MIN, Math.min(this.ZOOM_MAX, Math.min(scaleX, scaleY)));
+
+    const graphCenterX = (minX + maxX) / 2;
+    const graphCenterY = (minY + maxY) / 2;
+    this.offsetX = this.size.x / 2 - graphCenterX * this.zoom;
+    this.offsetY = this.size.y / 2 - graphCenterY * this.zoom;
+  }
+
+  /** Select all nodes */
+  selectAll(): void {
+    for (const node of this.nodes.values()) {
+      node.selected = true;
+    }
+  }
+
+  /** Reset all positions, clear localStorage, reheat */
+  resetPositions(): void {
+    this.clearPositions();
+    for (const node of this.nodes.values()) {
+      node.pinned = false;
+      node.x = Math.random() * 400 - 200;
+      node.y = Math.random() * 400 - 200;
+      node.vx = 0;
+      node.vy = 0;
+    }
+    this.offsetX = 0;
+    this.offsetY = 0;
+    this.zoom = 1.0;
+    this.reheat(1.0);
+  }
+
   /** Reheat the simulation (e.g., after adding nodes or pulsing) */
   reheat(alpha = 0.3) {
     this.alpha = Math.max(this.alpha, alpha);
@@ -743,11 +829,12 @@ export class Graph extends SceneNode {
     try { localStorage.removeItem(key); } catch {}
   }
 
-  /** Find graph node at canvas coordinates */
+  /** Find graph node at canvas coordinates (accounts for pan/zoom) */
   findNodeAt(canvasX: number, canvasY: number): GraphNode | null {
     const wp = this.worldPosition();
-    const localX = canvasX - wp.x - this.centerX;
-    const localY = canvasY - wp.y - this.centerY;
+    // Convert canvas coords to graph-local coords accounting for pan/zoom
+    const localX = (canvasX - wp.x - this.offsetX) / this.zoom - this.centerX;
+    const localY = (canvasY - wp.y - this.offsetY) / this.zoom - this.centerY;
     // Check in reverse order (front to back)
     const nodes = Array.from(this.nodes.values()).reverse();
     for (const node of nodes) {
@@ -771,8 +858,8 @@ export class Graph extends SceneNode {
   /** Move a dragged node to canvas coordinates, with optional grid snap */
   dragNode(node: GraphNode, canvasX: number, canvasY: number) {
     const wp = this.worldPosition();
-    let x = canvasX - wp.x - this.centerX;
-    let y = canvasY - wp.y - this.centerY;
+    let x = (canvasX - wp.x - this.offsetX) / this.zoom - this.centerX;
+    let y = (canvasY - wp.y - this.offsetY) / this.zoom - this.centerY;
 
     // Magnetic grid snap
     if (this.gridSnap > 0) {

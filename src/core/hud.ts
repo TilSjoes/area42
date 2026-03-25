@@ -11,6 +11,9 @@ import { Panel, PanelOptions } from "../panels/panel.js";
 import { Graph } from "../graph/graph.js";
 import type { GraphNode } from "../graph/graph.js";
 import { Theme, NeonTheme } from "../themes/neon.js";
+import { ContextMenu } from "../panels/contextmenu.js";
+import type { MenuItem } from "../panels/contextmenu.js";
+import { HelpOverlay } from "../panels/helpoverlay.js";
 
 export interface HUDOptions {
   theme?: Theme | "neon" | "glass";
@@ -54,6 +57,20 @@ export class HUD {
   private dragTarget: Panel | null = null;
   private hoverTarget: SceneNode | null = null;
   private showBackground: boolean;
+  private gridVisible = true;
+
+  // Context menu and help overlay
+  private contextMenu: ContextMenu = new ContextMenu();
+  private helpOverlay: HelpOverlay = new HelpOverlay();
+
+  // Graph panning state
+  private isPanning = false;
+  private panStart: Vec2 = { x: 0, y: 0 };
+  private panGraph: Graph | null = null;
+  private panStartOffset: Vec2 = { x: 0, y: 0 };
+
+  // Touch pinch state
+  private lastPinchDist = 0;
 
   constructor(selector: string | HTMLElement, options: HUDOptions = {}) {
     const el = typeof selector === "string" ? document.querySelector(selector) : selector;
@@ -89,12 +106,18 @@ export class HUD {
       this.scene.update(rc.deltaTime);
 
       // Draw background grid only when background is enabled
-      if (this.showBackground) {
+      if (this.showBackground && this.gridVisible) {
         this.drawGrid(rc);
       }
 
       // Render scene
       this.scene.render(rc.ctx);
+
+      // Render context menu (above everything)
+      this.contextMenu.render(rc.ctx);
+
+      // Render help overlay (topmost)
+      this.helpOverlay.render(rc.ctx, rc.width, rc.height);
     });
 
     // Mouse interactions
@@ -221,8 +244,51 @@ export class HUD {
   private setupInteractions() {
     const canvas = this.renderer["canvas"] as HTMLCanvasElement;
 
+    // --- Right-click context menu ---
+    canvas.addEventListener("contextmenu", (e) => {
+      e.preventDefault();
+      const point = this.canvasPoint(e);
+      const items = this.buildContextMenuItems(point);
+      this.contextMenu.show(point.x, point.y, items);
+      this.contextMenu.clampToScreen(this.renderer.width, this.renderer.height);
+    });
+
+    // --- Keyboard shortcuts ---
+    document.addEventListener("keydown", (e) => {
+      const tag = (document.activeElement?.tagName ?? "").toLowerCase();
+      if (tag === "input" || tag === "textarea" || tag === "select") return;
+      if ((document.activeElement as HTMLElement)?.isContentEditable) return;
+      this.handleKeyDown(e);
+    });
+
     canvas.addEventListener("mousedown", (e) => {
       const point = this.canvasPoint(e);
+
+      // Context menu click handling (takes priority)
+      if (this.contextMenu.isVisible()) {
+        if (this.contextMenu.handleClick(point)) return;
+      }
+
+      // Middle mouse or Ctrl+left = pan
+      if (e.button === 1 || (e.button === 0 && e.ctrlKey)) {
+        const panel = this.panelAt(point);
+        if (!panel) {
+          for (const child of this.scene.root.children) {
+            if (child instanceof Graph) {
+              if (!child.findNodeAt(point.x, point.y)) {
+                this.isPanning = true;
+                this.panStart = { x: point.x, y: point.y };
+                this.panGraph = child;
+                this.panStartOffset = { x: child.offsetX, y: child.offsetY };
+                canvas.style.cursor = "grabbing";
+                e.preventDefault();
+                return;
+              }
+            }
+          }
+        }
+      }
+
       const nodes = [...this.panels.values()].reverse();
 
       // Check graph nodes first
@@ -230,7 +296,6 @@ export class HUD {
         if (child instanceof Graph) {
           const hitNode = child.findNodeAt(point.x, point.y);
           if (hitNode) {
-            // Shift+click: toggle multi-select
             if (e.shiftKey) {
               child.toggleSelection(hitNode.id);
               return;
@@ -265,14 +330,12 @@ export class HUD {
       }
 
       for (const panel of nodes) {
-        // Check close button (top-right area of header)
         const wp = panel.worldPosition();
         if (panel.closable) {
           const closeX = wp.x + panel.size.x - 20;
           const closeY = wp.y;
           if (point.x >= closeX && point.x <= closeX + 20 &&
               point.y >= closeY && point.y <= closeY + 28) {
-            // Fire close callback if present
             if (typeof (panel as any).onCloseCallback === "function") {
               (panel as any).onCloseCallback();
             } else {
@@ -282,7 +345,6 @@ export class HUD {
           }
         }
 
-        // Check resize handle first (bottom-right 12x12 corner)
         const rx = wp.x + panel.size.x;
         const ry = wp.y + (panel.collapsed ? 28 : panel.size.y);
         if (!panel.collapsed && Math.abs(point.x - rx) < 12 && Math.abs(point.y - ry) < 12) {
@@ -304,6 +366,17 @@ export class HUD {
 
     canvas.addEventListener("mousemove", (e) => {
       const point = this.canvasPoint(e);
+
+      if (this.contextMenu.isVisible()) {
+        this.contextMenu.handleMove(point);
+      }
+
+      if (this.isPanning && this.panGraph) {
+        this.panGraph.offsetX = this.panStartOffset.x + (point.x - this.panStart.x);
+        this.panGraph.offsetY = this.panStartOffset.y + (point.y - this.panStart.y);
+        return;
+      }
+
       if (this.dragNode && this.dragGraph) {
         this.dragGraph.dragNode(this.dragNode, point.x, point.y);
       } else if (this.resizeTarget) {
@@ -342,6 +415,12 @@ export class HUD {
     });
 
     canvas.addEventListener("mouseup", () => {
+      if (this.isPanning) {
+        this.isPanning = false;
+        this.panGraph = null;
+        const c = this.renderer["canvas"] as HTMLCanvasElement;
+        c.style.cursor = "default";
+      }
       if (this.dragTarget) {
         this.dragTarget.endDrag();
         this.dragTarget = null;
@@ -357,20 +436,28 @@ export class HUD {
       }
     });
 
-    // Wheel event — forward to panel under cursor for scrolling
+    // Wheel event: zoom graph or scroll panel
     canvas.addEventListener("wheel", (e) => {
+      e.preventDefault();
       const point = this.canvasPoint(e);
+
       const panel = this.panelAt(point);
       if (panel && typeof (panel as any).scroll === "function") {
-        e.preventDefault();
         (panel as any).scroll(e.deltaY);
+        return;
+      }
+
+      for (const child of this.scene.root.children) {
+        if (child instanceof Graph) {
+          child.applyZoom(e.deltaY, point.x, point.y);
+          return;
+        }
       }
     }, { passive: false });
 
     canvas.addEventListener("dblclick", (e) => {
       const point = this.canvasPoint(e);
 
-      // Check graph nodes FIRST (before panels)
       for (const child of this.scene.root.children) {
         if (child instanceof Graph) {
           const hitNode = child.findNodeAt(point.x, point.y);
@@ -381,7 +468,6 @@ export class HUD {
         }
       }
 
-      // Then check panel headers for collapse/expand
       const nodes = [...this.panels.values()].reverse();
       for (const panel of nodes) {
         if (panel.isInHeader(point)) {
@@ -391,12 +477,20 @@ export class HUD {
       }
     });
 
-    // --- Touch support (iPad/tablet) ---
+    // --- Touch support ---
     let lastTouchTime = 0;
     let touchMoved = false;
 
     canvas.addEventListener("touchstart", (e: TouchEvent) => {
       e.preventDefault();
+
+      if (e.touches.length === 2) {
+        const dx = e.touches[0].clientX - e.touches[1].clientX;
+        const dy = e.touches[0].clientY - e.touches[1].clientY;
+        this.lastPinchDist = Math.sqrt(dx * dx + dy * dy);
+        return;
+      }
+
       if (e.touches.length !== 1) return;
       const touch = e.touches[0];
       touchMoved = false;
@@ -416,6 +510,28 @@ export class HUD {
 
     canvas.addEventListener("touchmove", (e: TouchEvent) => {
       e.preventDefault();
+
+      if (e.touches.length === 2) {
+        const dx = e.touches[0].clientX - e.touches[1].clientX;
+        const dy = e.touches[0].clientY - e.touches[1].clientY;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        if (this.lastPinchDist > 0) {
+          const midX = (e.touches[0].clientX + e.touches[1].clientX) / 2;
+          const midY = (e.touches[0].clientY + e.touches[1].clientY) / 2;
+          const rect = canvas.getBoundingClientRect();
+          const canvasX = midX - rect.left;
+          const canvasY = midY - rect.top;
+          const delta = this.lastPinchDist - dist;
+          for (const child of this.scene.root.children) {
+            if (child instanceof Graph) {
+              child.applyZoom(delta, canvasX, canvasY);
+            }
+          }
+        }
+        this.lastPinchDist = dist;
+        return;
+      }
+
       if (e.touches.length !== 1) return;
       touchMoved = true;
       const touch = e.touches[0];
@@ -427,9 +543,131 @@ export class HUD {
 
     canvas.addEventListener("touchend", (e: TouchEvent) => {
       e.preventDefault();
+      this.lastPinchDist = 0;
       canvas.dispatchEvent(new MouseEvent("mouseup", {}));
     }, { passive: false });
+  }
 
+  /** Build context menu items based on what was right-clicked */
+  private buildContextMenuItems(point: Vec2): MenuItem[] {
+    for (const child of this.scene.root.children) {
+      if (child instanceof Graph) {
+        const hitNode = child.findNodeAt(point.x, point.y);
+        if (hitNode) {
+          return this.buildNodeContextMenu(child, hitNode);
+        }
+      }
+    }
+    const panel = this.panelAt(point);
+    if (panel) {
+      return this.buildPanelContextMenu(panel);
+    }
+    return this.buildEmptyContextMenu();
+  }
+
+  private buildNodeContextMenu(graph: Graph, node: GraphNode): MenuItem[] {
+    const area42 = (window as any).__area42;
+    const expandedNodes: Set<string> = area42?.expandedNodes ?? new Set();
+    const isExpanded = expandedNodes.has(node.id);
+
+    return [
+      { label: "Inspect", icon: "🔍", shortcut: "Click", action: () => { if (area42?.onNodeClick) area42.onNodeClick(node); } },
+      { label: isExpanded ? "Collapse" : "Expand", icon: isExpanded ? "📦" : "📤", shortcut: "Dbl-click", action: () => { if (isExpanded) { graph.collapse(node.id); expandedNodes.delete(node.id); } else { this.handleGraphNodeDblClick(graph, node); } } },
+      { label: node.pinned ? "Unpin" : "Pin", icon: "📌", action: () => { node.pinned = !node.pinned; if (!node.pinned) graph.reheat(0.3); } },
+      { label: node.selected ? "Deselect" : "Select", icon: "✔", shortcut: "Shift+Click", action: () => { graph.toggleSelection(node.id); } },
+      { label: "", separator: true, action: () => {} },
+      { label: "Hide", icon: "🚫", color: NeonTheme.danger, action: () => { graph.removeNode(node.id); graph.reheat(0.2); } },
+    ];
+  }
+
+  private buildPanelContextMenu(panel: Panel): MenuItem[] {
+    return [
+      { label: panel.collapsed ? "Expand" : "Collapse", icon: panel.collapsed ? "▼" : "▲", action: () => { panel.collapsed = !panel.collapsed; } },
+      { label: "Close", icon: "×", shortcut: "Del", action: () => { if (typeof (panel as any).onCloseCallback === "function") { (panel as any).onCloseCallback(); } else { panel.visible = false; } } },
+      { label: "", separator: true, action: () => {} },
+      { label: "Reset Position", icon: "↺", action: () => { panel.position.x = 50; panel.position.y = 50; } },
+    ];
+  }
+
+  private buildEmptyContextMenu(): MenuItem[] {
+    return [
+      { label: "Reset Layout", icon: "↻", shortcut: "R", action: () => { for (const child of this.scene.root.children) { if (child instanceof Graph) { child.resetPositions(); } } } },
+      { label: "Clear Selection", icon: "✖", shortcut: "Esc", action: () => { for (const child of this.scene.root.children) { if (child instanceof Graph) { child.clearSelection(); } } } },
+      { label: "Save Positions", icon: "💾", action: () => { for (const child of this.scene.root.children) { if (child instanceof Graph) { child.savePositions(); } } } },
+      { label: "", separator: true, action: () => {} },
+      { label: this.gridVisible ? "Hide Grid" : "Show Grid", icon: "#", shortcut: "G", action: () => { this.gridVisible = !this.gridVisible; } },
+    ];
+  }
+
+  /** Handle keyboard shortcuts */
+  private handleKeyDown(e: KeyboardEvent): void {
+    const key = e.key;
+
+    if (key === "Escape") {
+      if (this.contextMenu.isVisible()) { this.contextMenu.hide(); return; }
+      if (this.helpOverlay.isVisible()) { this.helpOverlay.hide(); return; }
+      for (const child of this.scene.root.children) { if (child instanceof Graph) { child.clearSelection(); } }
+      for (const [, panel] of this.panels) {
+        if (panel.closable && panel.visible && panel.id.startsWith("detail")) { panel.visible = false; }
+      }
+      return;
+    }
+
+    if (key === "?" || (key.toLowerCase() === "h" && !e.ctrlKey && !e.metaKey)) {
+      this.helpOverlay.toggle();
+      return;
+    }
+
+    if (this.helpOverlay.isVisible()) return;
+
+    if (key === "Delete" || key === "Backspace") {
+      const panelArr = [...this.panels.values()];
+      if (panelArr.length > 0) {
+        const last = panelArr[panelArr.length - 1];
+        if (last.closable) {
+          if (typeof (last as any).onCloseCallback === "function") { (last as any).onCloseCallback(); } else { last.visible = false; }
+        }
+      }
+      return;
+    }
+
+    if (key === " ") {
+      e.preventDefault();
+      for (const child of this.scene.root.children) { if (child instanceof Graph) { child.toggleSimulation(); } }
+      return;
+    }
+
+    if (key === "f" || key === "F") {
+      for (const child of this.scene.root.children) { if (child instanceof Graph) { child.fitToView(); } }
+      return;
+    }
+
+    if (key === "g" || key === "G") {
+      this.gridVisible = !this.gridVisible;
+      return;
+    }
+
+    if (key === "r" || key === "R") {
+      for (const child of this.scene.root.children) { if (child instanceof Graph) { child.resetPositions(); } }
+      return;
+    }
+
+    if ((e.ctrlKey || e.metaKey) && (key === "a" || key === "A")) {
+      e.preventDefault();
+      for (const child of this.scene.root.children) { if (child instanceof Graph) { child.selectAll(); } }
+      return;
+    }
+
+    if (key >= "1" && key <= "5") {
+      const idx = parseInt(key) - 1;
+      const panelArr = [...this.panels.values()].filter(p => p.visible);
+      if (idx < panelArr.length) {
+        const panel = panelArr[idx];
+        this.scene.root.remove(panel);
+        this.scene.root.add(panel);
+      }
+      return;
+    }
   }
 
   /** Handle double-click on a graph node: expand or collapse drill-down */

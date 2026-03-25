@@ -53,4 +53,5 @@ export { MiniGraph } from "./panels/minigraph.js";
 export type { MiniNode, MiniEdge } from "./panels/minigraph.js";
 
 export { DetailPanel } from "./panels/detail.js";
+export { ContextMenu } from "./panels/contextmenu.js";export type { MenuItem } from "./panels/contextmenu.js";export { HelpOverlay } from "./panels/helpoverlay.js";
 export type { NodeDetail, DetailSection, DetailField } from "./panels/detail.js";
