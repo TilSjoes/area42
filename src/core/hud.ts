@@ -9,7 +9,7 @@ import { Renderer, RenderContext } from "./renderer.js";
 import { Scene, SceneNode, Vec2 } from "./scene.js";
 import { Panel, PanelOptions } from "../panels/panel.js";
 import { Graph } from "../graph/graph.js";
-import type { GraphNode } from "../graph/graph.js";
+import type { GraphNode, GraphEdge, EdgeDetail } from "../graph/graph.js";
 import { Theme, NeonTheme } from "../themes/neon.js";
 import { ContextMenu } from "../panels/contextmenu.js";
 import type { MenuItem } from "../panels/contextmenu.js";
@@ -390,14 +390,33 @@ export class HUD {
         const node = this.scene.findAt(point);
         if (node !== this.hoverTarget) {
           this.hoverTarget = node;
-          for (const child of this.scene.root.children) {
-            if (child instanceof Graph) {
-              const hitNode = child.findNodeAt(point.x, point.y);
-              if (hitNode) {
-                canvas.style.cursor = "grab";
-                return;
-              }
+        }
+        // Check for graph node or edge hover
+        let cursorSet = false;
+        for (const child of this.scene.root.children) {
+          if (child instanceof Graph) {
+            const hitNode = child.findNodeAt(point.x, point.y);
+            if (hitNode) {
+              child.hoveredEdge = null;
+              canvas.style.cursor = "grab";
+              cursorSet = true;
+              break;
             }
+            // Edge hover (only if no node is hit)
+            const hitEdge = child.findEdgeAt(point.x, point.y, 10);
+            if (hitEdge !== child.hoveredEdge) {
+              child.hoveredEdge = hitEdge;
+            }
+            if (hitEdge) {
+              canvas.style.cursor = "pointer";
+              cursorSet = true;
+            }
+          }
+        }
+        if (!cursorSet) {
+          // Clear edge hover if we left edges
+          for (const child of this.scene.root.children) {
+            if (child instanceof Graph) child.hoveredEdge = null;
           }
           let isResize = false;
           for (const [, p] of this.panels) {
@@ -409,7 +428,7 @@ export class HUD {
               break;
             }
           }
-          if (!isResize) canvas.style.cursor = node ? "pointer" : "default";
+          if (!isResize) canvas.style.cursor = this.hoverTarget ? "pointer" : "default";
         }
       }
     });
@@ -558,6 +577,16 @@ export class HUD {
         }
       }
     }
+    // Check for edge right-click
+    for (const child of this.scene.root.children) {
+      if (child instanceof Graph) {
+        const hitEdge = child.findEdgeAt(point.x, point.y, 10);
+        if (hitEdge) {
+          return this.buildEdgeContextMenu(child, hitEdge, point);
+        }
+      }
+    }
+
     const panel = this.panelAt(point);
     if (panel) {
       return this.buildPanelContextMenu(panel);
@@ -577,6 +606,41 @@ export class HUD {
       { label: node.selected ? "Deselect" : "Select", icon: "✔", shortcut: "Shift+Click", action: () => { graph.toggleSelection(node.id); } },
       { label: "", separator: true, action: () => {} },
       { label: "Hide", icon: "🚫", color: NeonTheme.danger, action: () => { graph.removeNode(node.id); graph.reheat(0.2); } },
+    ];
+  }
+
+  private buildEdgeContextMenu(graph: Graph, edge: GraphEdge, point: Vec2): MenuItem[] {
+    const area42 = (window as any).__area42;
+    return [
+      {
+        label: "Inspect",
+        icon: "\ud83d\udd0d",
+        shortcut: "Click",
+        action: () => {
+          if (edge.detail && area42?.onEdgeClick) {
+            area42.onEdgeClick(edge, point);
+          }
+        },
+      },
+      {
+        label: "Highlight path",
+        icon: "\u2728",
+        action: () => {
+          graph.clearSelection();
+          edge.selected = !edge.selected;
+          const fromNode = graph.getNode(edge.from);
+          const toNode = graph.getNode(edge.to);
+          if (fromNode) fromNode.selected = edge.selected;
+          if (toNode) toNode.selected = edge.selected;
+        },
+      },
+      {
+        label: "Show traffic",
+        icon: "\ud83d\ude80",
+        action: () => {
+          edge.particles = !edge.particles;
+        },
+      },
     ];
   }
 

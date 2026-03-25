@@ -9,6 +9,7 @@
  */
 import { HUD } from "../core/hud.js";
 import { Graph } from "../graph/graph.js";
+import type { GraphEdge, EdgeDetail } from "../graph/graph.js";
 import { DetailPanel } from "../panels/detail.js";
 import type { NodeDetail } from "../panels/detail.js";
 import { TimeSeries } from "../charts/timeseries.js";
@@ -304,6 +305,12 @@ canvas.addEventListener("mouseup", (e: MouseEvent) => {
   const hitNode = graph.findNodeAt(point.x, point.y);
   if (hitNode && nodeDetails[hitNode.id]) {
     toggleDetailPanel(hitNode.id, nodeDetails[hitNode.id]);
+  } else {
+    // Check for edge click (only if no node was hit)
+    const hitEdge = graph.findEdgeAt(point.x, point.y);
+    if (hitEdge && hitEdge.detail) {
+      handleEdgeClick(hitEdge, point);
+    }
   }
   // Clicking empty space no longer closes panels — user must click X or click the same node
 });
@@ -395,16 +402,132 @@ graph.addNode({
   data: { role: "orchestrator" },
 });
 
-// Add edges with particle flow
-graph.addEdge({ from: "spine", to: "moe", color: "#22d3ee", particles: true, width: 1.5 });
-graph.addEdge({ from: "spine", to: "dense", color: "#a78bfa", particles: true, width: 1.5 });
-graph.addEdge({ from: "spine", to: "claude", color: "#ff6b6b", particles: true, width: 1.2 });
-graph.addEdge({ from: "spine", to: "gpt52", color: "#51cf66", dashed: true, width: 1 });
-graph.addEdge({ from: "agentsmith", to: "spine", color: "#f97316", particles: true, width: 1.5, label: "classify" });
-graph.addEdge({ from: "agentsmith", to: "nats", color: "#ffd43b", particles: true, width: 1.2, label: "publish" });
-graph.addEdge({ from: "nats", to: "spine", color: "#ffd43b", dashed: true, width: 0.8 });
-graph.addEdge({ from: "moe", to: "nats", color: "#22d3ee66", width: 0.8 });
-graph.addEdge({ from: "dense", to: "nats", color: "#a78bfa66", width: 0.8 });
+// Add edges with particle flow and detail data
+graph.addEdge({
+  from: "spine", to: "moe", color: "#22d3ee", particles: true, width: 1.5,
+  detail: {
+    title: "Spine \u2192 MoE (Simple/Medium)",
+    subtitle: "Primary routing path",
+    color: "#22d3ee",
+    fields: [
+      { label: "Requests", value: "1,247", color: "#c8d6e5" },
+      { label: "Avg latency", value: "245ms", color: "#51cf66" },
+      { label: "Tier", value: "Simple + Medium", color: "#51cf66" },
+      { label: "Cost", value: "FREE", color: "#51cf66" },
+      { label: "Throughput", value: "83 tok/s", color: "#22d3ee" },
+    ],
+  },
+});
+graph.addEdge({
+  from: "spine", to: "dense", color: "#a78bfa", particles: true, width: 1.5,
+  detail: {
+    title: "Spine \u2192 Dense (Complex)",
+    subtitle: "Quality reasoning path",
+    color: "#a78bfa",
+    fields: [
+      { label: "Requests", value: "312", color: "#c8d6e5" },
+      { label: "Avg latency", value: "4.2s", color: "#ffd43b" },
+      { label: "Tier", value: "Complex", color: "#a78bfa" },
+      { label: "Cost", value: "FREE", color: "#51cf66" },
+      { label: "Quality", value: "SWE-bench 72.4%", color: "#a78bfa" },
+    ],
+  },
+});
+graph.addEdge({
+  from: "spine", to: "claude", color: "#ff6b6b", particles: true, width: 1.2,
+  detail: {
+    title: "Spine \u2192 Claude (Escalation)",
+    subtitle: "Premium escalation path",
+    color: "#ff6b6b",
+    fields: [
+      { label: "Requests", value: "47", color: "#c8d6e5" },
+      { label: "Avg latency", value: "1.8s", color: "#ffd43b" },
+      { label: "Tier", value: "Complex (escalated)", color: "#ff6b6b" },
+      { label: "Cost", value: "Subscription", color: "#ff6b6b" },
+      { label: "Model", value: "claude-sonnet-4-5", color: "#ff6b6b" },
+    ],
+  },
+});
+graph.addEdge({
+  from: "spine", to: "gpt52", color: "#51cf66", dashed: true, width: 1,
+  detail: {
+    title: "Spine \u2192 GPT-5.2 (Fallback)",
+    subtitle: "GitHub Copilot fallback path",
+    color: "#51cf66",
+    fields: [
+      { label: "Requests", value: "23", color: "#c8d6e5" },
+      { label: "Avg latency", value: "2.1s", color: "#ffd43b" },
+      { label: "Tier", value: "Medium fallback", color: "#51cf66" },
+      { label: "Cost", value: "Copilot sub", color: "#51cf66" },
+    ],
+  },
+});
+graph.addEdge({
+  from: "agentsmith", to: "spine", color: "#f97316", particles: true, width: 1.5, label: "classify",
+  detail: {
+    title: "AgentSmith \u2192 Spine",
+    subtitle: "Mission classification requests",
+    color: "#f97316",
+    fields: [
+      { label: "Requests", value: "1,629", color: "#c8d6e5" },
+      { label: "Avg latency", value: "180ms", color: "#51cf66" },
+      { label: "Type", value: "Classification", color: "#f97316" },
+      { label: "Accuracy", value: "94.2%", color: "#51cf66" },
+    ],
+  },
+});
+graph.addEdge({
+  from: "agentsmith", to: "nats", color: "#ffd43b", particles: true, width: 1.2, label: "publish",
+  detail: {
+    title: "AgentSmith \u2192 NATS",
+    subtitle: "Mission & routing event stream",
+    color: "#ffd43b",
+    fields: [
+      { label: "Messages/min", value: "34", color: "#c8d6e5" },
+      { label: "Streams", value: "ROUTING, MISSIONS", color: "#ffd43b" },
+      { label: "Type", value: "JetStream publish", color: "#ffd43b" },
+    ],
+  },
+});
+graph.addEdge({
+  from: "nats", to: "spine", color: "#ffd43b", dashed: true, width: 0.8,
+  detail: {
+    title: "NATS \u2192 Spine",
+    subtitle: "Feedback loop for retraining",
+    color: "#ffd43b",
+    fields: [
+      { label: "Stream", value: "FEEDBACK", color: "#ffd43b" },
+      { label: "Messages", value: "892", color: "#c8d6e5" },
+      { label: "Type", value: "Work queue", color: "#ffd43b" },
+    ],
+  },
+});
+graph.addEdge({
+  from: "moe", to: "nats", color: "#22d3ee66", width: 0.8,
+  detail: {
+    title: "MoE \u2192 NATS",
+    subtitle: "Response telemetry",
+    color: "#22d3ee",
+    fields: [
+      { label: "Events", value: "1,247", color: "#c8d6e5" },
+      { label: "Stream", value: "ROUTING", color: "#ffd43b" },
+      { label: "Data", value: "Latency, tokens, tier", color: "#22d3ee" },
+    ],
+  },
+});
+graph.addEdge({
+  from: "dense", to: "nats", color: "#a78bfa66", width: 0.8,
+  detail: {
+    title: "Dense \u2192 NATS",
+    subtitle: "Response telemetry",
+    color: "#a78bfa",
+    fields: [
+      { label: "Events", value: "312", color: "#c8d6e5" },
+      { label: "Stream", value: "ROUTING", color: "#ffd43b" },
+      { label: "Data", value: "Latency, tokens, quality", color: "#a78bfa" },
+    ],
+  },
+});
 
 // Load saved node positions (sticky between sessions)
 const loaded = graph.loadPositions();
@@ -651,8 +774,82 @@ sse.connect().then(() => {
 // --- Drill-down state: track which nodes are expanded ---
 const expandedNodes = new Set<string>();
 
-// Export for HUD double-click handler
-(window as any).__area42 = { graph, expandedNodes };
+/** Open a detail panel for an edge click */
+function handleEdgeClick(edge: GraphEdge, point: { x: number; y: number }) {
+  if (!edge.detail) return;
+  const panelId = "edge-" + edge.from + "-" + edge.to;
+
+  // Check if already open - toggle it off
+  const existing = detailPanels.get(panelId);
+  if (existing) {
+    hud.unregisterPanel(existing.id);
+    detailPanels.delete(panelId);
+    const idx = detailPanelOrder.indexOf(panelId);
+    if (idx >= 0) detailPanelOrder.splice(idx, 1);
+    return;
+  }
+
+  // Evict oldest if at limit
+  while (detailPanels.size >= MAX_DETAIL_PANELS && detailPanelOrder.length > 0) {
+    const oldestId = detailPanelOrder.shift()!;
+    const oldPanel = detailPanels.get(oldestId);
+    if (oldPanel) {
+      hud.unregisterPanel(oldPanel.id);
+      detailPanels.delete(oldestId);
+    }
+  }
+
+  // Build NodeDetail from EdgeDetail for the DetailPanel
+  const ed = edge.detail;
+  const nodeDetail: NodeDetail = {
+    nodeId: panelId,
+    title: ed.title,
+    subtitle: ed.subtitle,
+    color: ed.color,
+    sections: [
+      {
+        title: "Connection",
+        fields: ed.fields.map((f) => ({
+          label: f.label,
+          value: f.value,
+          color: f.color,
+        })),
+      },
+    ],
+  };
+
+  // Position near click point
+  const canvasW = hud.renderer.width;
+  const canvasH = hud.renderer.height;
+  const pos = {
+    x: Math.max(10, Math.min(canvasW - 340, point.x + 20)),
+    y: Math.max(10, Math.min(canvasH - 200, point.y - 60)),
+  };
+
+  const panel = new DetailPanel(panelId, pos);
+  panel.show(nodeDetail);
+  panel.onClose(() => {
+    hud.unregisterPanel(panel.id);
+    detailPanels.delete(panelId);
+    const idx = detailPanelOrder.indexOf(panelId);
+    if (idx >= 0) detailPanelOrder.splice(idx, 1);
+  });
+  hud.registerPanel(panel);
+  detailPanels.set(panelId, panel);
+  detailPanelOrder.push(panelId);
+}
+
+// Export for HUD double-click handler and edge clicks
+(window as any).__area42 = {
+  graph,
+  expandedNodes,
+  onEdgeClick: handleEdgeClick,
+  onNodeClick: (node: any) => {
+    if (nodeDetails[node.id]) {
+      toggleDetailPanel(node.id, nodeDetails[node.id]);
+    }
+  },
+};
 
 console.log(
   "%c Area42 %c Marvin Architecture Visualization ",

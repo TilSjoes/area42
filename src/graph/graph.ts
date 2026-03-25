@@ -22,6 +22,14 @@ export interface GraphNodeOptions {
   data?: any;
 }
 
+/** Detail data for edge inspection panel */
+export interface EdgeDetail {
+  title: string;
+  subtitle?: string;
+  color?: string;
+  fields: Array<{ label: string; value: string | number; color?: string }>;
+}
+
 /** Options for creating a graph edge */
 export interface GraphEdgeOptions {
   from: string;
@@ -31,6 +39,8 @@ export interface GraphEdgeOptions {
   width?: number;
   particles?: boolean;
   dashed?: boolean;
+  data?: Record<string, any>;
+  detail?: EdgeDetail;
 }
 
 /** Options for spawning a particle along an edge */
@@ -93,6 +103,10 @@ export class GraphEdge {
   width: number;
   particles: boolean;
   dashed: boolean;
+  data: Record<string, any>;
+  detail: EdgeDetail | undefined;
+  /** Whether this edge is selected (highlighted) */
+  selected = false;
   /** Timer for auto-particle emission */
   particleTimer = 0;
 
@@ -104,6 +118,8 @@ export class GraphEdge {
     this.width = options.width ?? 1;
     this.particles = options.particles ?? false;
     this.dashed = options.dashed ?? false;
+    this.data = options.data ?? {};
+    this.detail = options.detail;
   }
 }
 
@@ -129,6 +145,9 @@ export class Graph extends SceneNode {
   private centerY = 0;
   private layoutType: LayoutType = "force";
   private simulationActive = true;
+
+  /** Currently hovered edge (for highlight effect) */
+  hoveredEdge: GraphEdge | null = null;
 
   // Pan and zoom state
   offsetX = 0;
@@ -384,12 +403,26 @@ export class Graph extends SceneNode {
       const toNode = this.nodes.get(edge.to);
       if (!fromNode || !toNode) continue;
 
+      const isHovered = edge === this.hoveredEdge;
+      const isEdgeSelected = edge.selected;
+
       ctx.save();
       ctx.strokeStyle = edge.color;
       ctx.lineWidth = edge.width;
 
-      // Selection-aware edge opacity
-      if (anySelected) {
+      // Hovered or selected edge gets extra glow and width
+      if (isEdgeSelected) {
+        ctx.lineWidth = edge.width * 2.5;
+        ctx.shadowColor = edge.color;
+        ctx.shadowBlur = 14;
+        ctx.globalAlpha = 1.0;
+      } else if (isHovered) {
+        ctx.lineWidth = edge.width * 2.0;
+        ctx.shadowColor = edge.color;
+        ctx.shadowBlur = 10;
+        ctx.globalAlpha = 0.9;
+      } else if (anySelected) {
+        // Selection-aware edge opacity
         if (fromNode.selected && toNode.selected) {
           ctx.globalAlpha = 1.0;
           ctx.lineWidth = edge.width * 1.8;
@@ -827,6 +860,55 @@ export class Graph extends SceneNode {
   /** Clear saved positions */
   clearPositions(key = "area42-graph-positions") {
     try { localStorage.removeItem(key); } catch {}
+  }
+
+  /**
+   * Find graph edge at canvas coordinates (accounts for pan/zoom).
+   * Uses point-to-bezier-curve distance with sampling.
+   * @param threshold - Max pixel distance to count as a hit (default 8)
+   */
+  findEdgeAt(canvasX: number, canvasY: number, threshold = 8): GraphEdge | null {
+    const wp = this.worldPosition();
+    const localX = (canvasX - wp.x - this.offsetX) / this.zoom - this.centerX;
+    const localY = (canvasY - wp.y - this.offsetY) / this.zoom - this.centerY;
+
+    let closestEdge: GraphEdge | null = null;
+    let closestDist = threshold;
+
+    for (const edge of this.edges) {
+      const fromNode = this.nodes.get(edge.from);
+      const toNode = this.nodes.get(edge.to);
+      if (!fromNode || !toNode) continue;
+
+      // Compute the same control point as the render method
+      const mx = (fromNode.x + toNode.x) / 2;
+      const my = (fromNode.y + toNode.y) / 2;
+      const dx = toNode.x - fromNode.x;
+      const dy = toNode.y - fromNode.y;
+      const cx = mx - dy * 0.05;
+      const cy = my + dx * 0.05;
+
+      // Sample 20 points along the quadratic bezier
+      const SAMPLES = 20;
+      for (let i = 0; i <= SAMPLES; i++) {
+        const t = i / SAMPLES;
+        const it = 1 - t;
+        // Quadratic bezier: B(t) = (1-t)^2 * P0 + 2(1-t)t * CP + t^2 * P1
+        const bx = it * it * fromNode.x + 2 * it * t * cx + t * t * toNode.x;
+        const by = it * it * fromNode.y + 2 * it * t * cy + t * t * toNode.y;
+
+        const sdx = localX - bx;
+        const sdy = localY - by;
+        const dist = Math.sqrt(sdx * sdx + sdy * sdy);
+
+        if (dist < closestDist) {
+          closestDist = dist;
+          closestEdge = edge;
+        }
+      }
+    }
+
+    return closestEdge;
   }
 
   /** Find graph node at canvas coordinates (accounts for pan/zoom) */
