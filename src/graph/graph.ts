@@ -58,6 +58,12 @@ export class GraphNode {
   pulseColor = "#ffffff";
   /** Whether this node is pinned (no physics) */
   pinned = false;
+  /** Gravity well: true when node has expanded children */
+  isWell = false;
+  /** Gravity well radius of attraction */
+  wellRadius = 120;
+  /** Gravity well strength (how strongly children are pulled) */
+  wellStrength = 0.05;
   /** Children added via expand() */
   childIds: string[] = [];
   /** Parent node ID if this was added via expand() */
@@ -126,7 +132,7 @@ export class Graph extends SceneNode {
   private repulsionStrength = -300;
   private springLength = 150;
   private springStrength = 0.003;
-  private centerGravity = 0.02;
+  private centerGravity = 0.005;
   private damping = 0.85;
   private alpha = 1.0;         // simulation "temperature" — decays to settle
   private alphaDecay = 0.998;  // how fast it cools (closer to 1 = slower)
@@ -227,7 +233,7 @@ export class Graph extends SceneNode {
     const parent = this.nodes.get(nodeId);
     if (!parent) return;
 
-    parent.pinned = true;  // Lock parent in place while expanded
+    parent.isWell = true;  // Activate gravity well for children
 
     const angleStep = (Math.PI * 2) / children.length;
     const expandRadius = 60;
@@ -242,7 +248,9 @@ export class Graph extends SceneNode {
         },
       });
       child.parentId = nodeId;
-      child.pinned = true;  // Pin so gravity doesn't steal them
+      // Give initial outward velocity so children spread naturally
+      child.vx = Math.cos(angle) * 30;
+      child.vy = Math.sin(angle) * 30;
       this.nodes.set(child.id, child);
       parent.childIds.push(child.id);
 
@@ -269,6 +277,8 @@ export class Graph extends SceneNode {
     // Check if parent was manually placed (has saved position)
     // If not, unpin so physics can move it
     // For now, keep it pinned since user likely placed it
+
+    parent.isWell = false;  // Deactivate gravity well
 
     const toRemove = [...parent.childIds];
     for (const childId of toRemove) {
@@ -447,6 +457,20 @@ export class Graph extends SceneNode {
 
       ctx.restore();
 
+      // Gravity well visualization
+      if (node.isWell) {
+        ctx.save();
+        const gradient = ctx.createRadialGradient(nx, ny, 0, nx, ny, node.wellRadius);
+        gradient.addColorStop(0, node.color + "08");
+        gradient.addColorStop(0.5, node.color + "04");
+        gradient.addColorStop(1, "transparent");
+        ctx.fillStyle = gradient;
+        ctx.beginPath();
+        ctx.arc(nx, ny, node.wellRadius, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+      }
+
       // Label
       ctx.save();
       ctx.fillStyle = NeonTheme.text;
@@ -564,6 +588,35 @@ export class Graph extends SceneNode {
       if (node.pinned) continue;
       node.vx -= node.x * this.centerGravity;
       node.vy -= node.y * this.centerGravity;
+    }
+
+    // Gravity wells: parents attract their children
+    for (const node of nodeArr) {
+      if (!node.isWell || node.childIds.length === 0) continue;
+
+      for (const childId of node.childIds) {
+        const child = this.nodes.get(childId);
+        if (!child || child.pinned) continue;
+
+        const dx = node.x - child.x;
+        const dy = node.y - child.y;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+
+        if (dist < 0.1) continue;
+
+        if (dist < node.wellRadius) {
+          // Spring-like: stronger pull when further from ideal orbit distance
+          const idealDist = node.wellRadius * 0.5;
+          const force = (dist - idealDist) * node.wellStrength;
+          child.vx -= (dx / dist) * force;
+          child.vy -= (dy / dist) * force;
+        } else {
+          // Outside well radius: gentle pull back
+          const force = node.wellStrength * 0.5;
+          child.vx += (dx / dist) * force;
+          child.vy += (dy / dist) * force;
+        }
+      }
     }
 
     // Apply alpha cooling — simulation settles over time
