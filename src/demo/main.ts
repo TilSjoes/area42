@@ -4,6 +4,8 @@
  * Interactive force-directed graph of the Marvin routing infrastructure
  * with live particles, sparklines, metric displays, and real SSE events
  * from AgentSmith (with simulation fallback).
+ *
+ * Supports multiple detail panels, scroll, drag, and close.
  */
 import { HUD } from "../core/hud.js";
 import { Graph } from "../graph/graph.js";
@@ -17,10 +19,86 @@ import { NeonTheme } from "../themes/neon.js";
 // --- Initialize HUD ---
 const hud = new HUD("#hud", { theme: "neon" });
 
+// --- Multiple Detail Panels (click-to-inspect) ---
+const MAX_DETAIL_PANELS = 5;
+const detailPanels: Map<string, DetailPanel> = new Map();
+/** Track creation order for LRU eviction */
+const detailPanelOrder: string[] = [];
+/** Cascade offset counter */
+let cascadeIndex = 0;
 
-// --- Detail Panel (click-to-inspect) ---
-const detailPanel = new DetailPanel({ x: 800, y: 40 });
-hud.scene.root.add(detailPanel);
+/** Get a screen position near the clicked graph node, cascaded to avoid overlap */
+function detailPositionForNode(nodeId: string): { x: number; y: number } {
+  // Try to find the graph node position
+  const graphNode = graph.getNode(nodeId);
+  const canvasW = hud.renderer.width;
+  const canvasH = hud.renderer.height;
+
+  let baseX = canvasW - 360;
+  let baseY = 40;
+
+  if (graphNode) {
+    // Position to the right of the node, offset by cascade
+    // Graph is centered — node positions are relative to graph center
+    const graphCenterX = canvasW / 2;
+    const graphCenterY = canvasH / 2;
+    baseX = graphCenterX + graphNode.x + 40;
+    baseY = graphCenterY + graphNode.y - 60;
+  }
+
+  // Apply cascade offset
+  const offset = cascadeIndex * 30;
+  cascadeIndex = (cascadeIndex + 1) % 8;
+
+  // Clamp to canvas bounds
+  const x = Math.max(10, Math.min(canvasW - 340, baseX + offset));
+  const y = Math.max(10, Math.min(canvasH - 200, baseY + offset));
+
+  return { x, y };
+}
+
+/** Open or toggle a detail panel for a node */
+function toggleDetailPanel(nodeId: string, detail: NodeDetail) {
+  const existing = detailPanels.get(nodeId);
+  if (existing) {
+    // Toggle: if visible, hide and remove; if hidden, show
+    if (existing.visible) {
+      hud.unregisterPanel(existing.id);
+      detailPanels.delete(nodeId);
+      const idx = detailPanelOrder.indexOf(nodeId);
+      if (idx >= 0) detailPanelOrder.splice(idx, 1);
+      return;
+    }
+  }
+
+  // Evict oldest if at limit
+  while (detailPanels.size >= MAX_DETAIL_PANELS && detailPanelOrder.length > 0) {
+    const oldestId = detailPanelOrder.shift()!;
+    const oldPanel = detailPanels.get(oldestId);
+    if (oldPanel) {
+      hud.unregisterPanel(oldPanel.id);
+      detailPanels.delete(oldestId);
+    }
+  }
+
+  // Create new panel
+  const pos = detailPositionForNode(nodeId);
+  const panel = new DetailPanel(nodeId, pos);
+  panel.show(detail);
+
+  // Set close callback to remove from our tracking
+  panel.onClose(() => {
+    hud.unregisterPanel(panel.id);
+    detailPanels.delete(nodeId);
+    const idx = detailPanelOrder.indexOf(nodeId);
+    if (idx >= 0) detailPanelOrder.splice(idx, 1);
+  });
+
+  // Register with HUD for drag/resize/scroll
+  hud.registerPanel(panel);
+  detailPanels.set(nodeId, panel);
+  detailPanelOrder.push(nodeId);
+}
 
 // Node detail definitions
 const nodeDetails: Record<string, NodeDetail> = {
@@ -41,8 +119,8 @@ const nodeDetails: Record<string, NodeDetail> = {
       ]},
       { title: "Routing", fields: [
         { label: "Simple", value: "MoE", type: "list", color: "#51cf66" },
-        { label: "Medium", value: "MoE → Dense", type: "list", color: "#ffd43b" },
-        { label: "Complex", value: "Dense → Claude", type: "list", color: "#ff6b6b" },
+        { label: "Medium", value: "MoE \u2192 Dense", type: "list", color: "#ffd43b" },
+        { label: "Complex", value: "Dense \u2192 Claude", type: "list", color: "#ff6b6b" },
       ]},
     ],
     actions: [
@@ -146,7 +224,6 @@ const nodeDetails: Record<string, NodeDetail> = {
 };
 
 // Wire single-click on graph nodes to show detail panel
-// We need to add click handling - use mousedown + mouseup without drag
 let nodeClickStart: { x: number; y: number; time: number } | null = null;
 const canvas = hud.renderer["canvas"] as HTMLCanvasElement;
 
@@ -164,15 +241,14 @@ canvas.addEventListener("mouseup", (e: MouseEvent) => {
   const dt = Date.now() - nodeClickStart.time;
   nodeClickStart = null;
 
-  // Only trigger if it was a click (not a drag) — small movement + short duration
+  // Only trigger if it was a click (not a drag)
   if (Math.abs(dx) > 5 || Math.abs(dy) > 5 || dt > 300) return;
 
   const hitNode = graph.findNodeAt(point.x, point.y);
   if (hitNode && nodeDetails[hitNode.id]) {
-    detailPanel.toggle(nodeDetails[hitNode.id]);
-  } else if (!hitNode) {
-    detailPanel.hide();
+    toggleDetailPanel(hitNode.id, nodeDetails[hitNode.id]);
   }
+  // Clicking empty space no longer closes panels — user must click X or click the same node
 });
 
 
@@ -301,7 +377,6 @@ costMetrics.set("Local", "0 / 0");
 
 costPanel.onContent((ctx, x, y, w, h) => {
   costMetrics.render(ctx, x, y, w, h * 0.55);
-  // Sparkline in bottom portion
   costSeries.render(ctx, x, y + h * 0.6, w, h * 0.35);
 });
 
@@ -358,9 +433,9 @@ const backendToNode: Record<string, string> = {
 
 /** Tier to color mapping */
 const tierColor: Record<string, string> = {
-  simple: NeonTheme.success,    // green
-  medium: NeonTheme.warning,    // yellow
-  complex: NeonTheme.danger,    // red
+  simple: NeonTheme.success,
+  medium: NeonTheme.warning,
+  complex: NeonTheme.danger,
 };
 
 /** Tier to approximate cost per request */
@@ -376,14 +451,12 @@ function handleRouteEvent(tier: string, backend: string, totalMs?: number, token
   else if (tier === "medium") mediumCount++;
   else complexCount++;
 
-  // Update cost panel metrics
   costMetrics.set("Total Cost", "$" + totalCost.toFixed(2), NeonTheme.success);
   costMetrics.set("Requests", requestCount);
   const savedPct = Math.round(((simpleCount + mediumCount * 0.5) / requestCount) * 100);
   costMetrics.set("Saved", savedPct + "%", NeonTheme.accent);
   costMetrics.set("Local", simpleCount + mediumCount + " / " + requestCount);
 
-  // Update router panel tier percentages
   const simplePct = Math.round((simpleCount / requestCount) * 100);
   const mediumPct = Math.round((mediumCount / requestCount) * 100);
   const complexPct = Math.round((complexCount / requestCount) * 100);
@@ -391,28 +464,22 @@ function handleRouteEvent(tier: string, backend: string, totalMs?: number, token
   routerMetrics.set("Medium", mediumPct + "%", NeonTheme.warning);
   routerMetrics.set("Complex", complexPct + "%", NeonTheme.danger);
 
-  // Push to time series
   costSeries.push(totalCost);
   tokenSeries.push(tokensOut ?? Math.round(Math.random() * 8000 + 500));
 
-  // Update spine latency
   spineMetrics.set("Latency", (totalMs ?? Math.round(200 + Math.random() * 300)) + "ms", "#f97316");
 
-  // Resolve the target node
   const targetNodeId = backendToNode[backend] ?? "moe";
 
-  // 1) Spawn particle from AgentSmith to Spine (cyan, classification)
   graph.particle("agentsmith", "spine", { color: "#22d3ee", speed: 0.6 });
   graph.pulse("spine", "#f97316");
 
-  // 2) After a short delay, spawn particle from Spine to target model (color by tier)
   const color = tierColor[tier] ?? "#ffffff";
   setTimeout(() => {
     graph.particle("spine", targetNodeId, { color, speed: 0.6 });
     graph.pulse(targetNodeId);
   }, 300);
 
-  // NATS gets a pulse occasionally
   if (Math.random() < 0.3) {
     setTimeout(() => graph.pulse("nats", "#ffd43b"), 500);
   }
@@ -487,40 +554,34 @@ sse.on("mission_event", (_data: any) => {
   graph.pulse("agentsmith", "#4dabf7");
 });
 
-// keepalive: mark SSE as alive and connected
 sse.on("keepalive", () => {
   lastEventTime = Date.now();
   sseConnected = true;
 });
 
-// Generic message handler (SSESource dispatches by data.type)
 sse.on("message", (data: any) => {
   if (data.type === "route_event" || data.type === "mission_event" || data.type === "keepalive") {
-    return; // Already handled by specific handlers above
+    return;
   }
   lastEventTime = Date.now();
 });
 
 sse.on("error", () => {
-  // SSE error: will auto-reconnect, but start simulation if no events yet
   if (!simulationRunning && !sseConnected) {
     startSimulation();
   }
 });
 
-// Attempt SSE connection
 sse.connect().then(() => {
   lastEventTime = Date.now();
   console.log("Area42: SSE connected to AgentSmith");
 
-  // Watchdog: if no events for 5s, fall back to simulation
   fallbackTimer = setInterval(() => {
     if (Date.now() - lastEventTime > 20000 && !simulationRunning) {
       console.log("Area42: No SSE events for 20s, starting simulation fallback");
       sseConnected = false;
       startSimulation();
     }
-    // If real events resume, stop simulation
     if (sseConnected && simulationRunning) {
       stopSimulation();
     }
@@ -541,6 +602,9 @@ console.log(
   "background: #0a0e17; color: #00d4aa; font-weight: bold; padding: 4px 8px;",
   "background: #131a2b; color: #c8d6e5; padding: 4px 8px;",
 );
-console.log("  Drag panels by their title bars. Double-click to collapse.");
-console.log("  Double-click graph nodes to expand/collapse details.");
+console.log("  Click graph nodes to open detail panels (up to 5 simultaneously).");
+console.log("  Drag panels by their title bars. Double-click headers to collapse.");
+console.log("  Scroll inside detail panels with mouse wheel.");
+console.log("  Click X to close a detail panel, or click the same node again.");
+console.log("  Double-click graph nodes to expand/collapse drill-down children.");
 console.log("  Live SSE from AgentSmith with simulation fallback.");

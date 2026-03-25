@@ -53,11 +53,14 @@ export class HUD {
   private panels: Map<string, Panel> = new Map();
   private dragTarget: Panel | null = null;
   private hoverTarget: SceneNode | null = null;
+  private showBackground: boolean;
 
   constructor(selector: string | HTMLElement, options: HUDOptions = {}) {
     const el = typeof selector === "string" ? document.querySelector(selector) : selector;
     if (!el) throw new Error("Area42: container not found: " + selector);
     this.container = el as HTMLElement;
+
+    this.showBackground = options.background !== false;
 
     // Theme
     if (options.theme === "glass") {
@@ -69,8 +72,11 @@ export class HUD {
     }
 
     // Set container background
-    if (options.background !== false) {
+    if (this.showBackground) {
       this.container.style.background = this.theme.bg;
+      this.container.style.overflow = "hidden";
+    } else {
+      this.container.style.background = "transparent";
       this.container.style.overflow = "hidden";
     }
 
@@ -82,8 +88,10 @@ export class HUD {
     this.renderer.onRender((rc: RenderContext) => {
       this.scene.update(rc.deltaTime);
 
-      // Draw background grid
-      this.drawGrid(rc);
+      // Draw background grid only when background is enabled
+      if (this.showBackground) {
+        this.drawGrid(rc);
+      }
 
       // Render scene
       this.scene.render(rc.ctx);
@@ -102,6 +110,26 @@ export class HUD {
     this.scene.root.add(panel);
     this.panels.set(panel.id, panel);
     return panel;
+  }
+
+  /** Register an existing panel (e.g. DetailPanel) with the HUD for drag/resize/scroll */
+  registerPanel(panel: Panel) {
+    if (!this.panels.has(panel.id)) {
+      this.panels.set(panel.id, panel);
+      // Add to scene if not already there
+      if (!this.scene.root.children.includes(panel)) {
+        this.scene.root.add(panel);
+      }
+    }
+  }
+
+  /** Unregister a panel from the HUD (removes from Map and scene) */
+  unregisterPanel(id: string) {
+    const panel = this.panels.get(id);
+    if (panel) {
+      this.scene.root.remove(panel);
+      this.panels.delete(id);
+    }
   }
 
   /** Find a panel by ID */
@@ -139,8 +167,8 @@ export class HUD {
     }
   }
 
-  private readonly SNAP_DISTANCE = 15;  // px to trigger magnetic snap
-  private readonly EDGE_DOCK_MARGIN = 8;  // px from container edge
+  private readonly SNAP_DISTANCE = 15;
+  private readonly EDGE_DOCK_MARGIN = 8;
   private resizeTarget: Panel | null = null;
   private dragNode: GraphNode | null = null;
   private dragGraph: Graph | null = null;
@@ -148,7 +176,6 @@ export class HUD {
 
   /** Snap position to grid or nearby panels */
   private magneticSnap(panel: Panel, pos: Vec2): Vec2 {
-    const gridSize = 20;
     let x = pos.x;
     let y = pos.y;
 
@@ -162,21 +189,32 @@ export class HUD {
     for (const [id, other] of this.panels) {
       if (other === panel) continue;
       const op = other.worldPosition();
-      // Left edge aligns with other's left or right
       if (Math.abs(x - op.x) < this.SNAP_DISTANCE) x = op.x;
       if (Math.abs(x - (op.x + other.size.x)) < this.SNAP_DISTANCE) x = op.x + other.size.x;
-      // Right edge
       if (Math.abs((x + panel.size.x) - op.x) < this.SNAP_DISTANCE) x = op.x - panel.size.x;
       if (Math.abs((x + panel.size.x) - (op.x + other.size.x)) < this.SNAP_DISTANCE) x = op.x + other.size.x - panel.size.x;
-      // Top
       if (Math.abs(y - op.y) < this.SNAP_DISTANCE) y = op.y;
       if (Math.abs(y - (op.y + other.size.y)) < this.SNAP_DISTANCE) y = op.y + other.size.y;
-      // Bottom
       if (Math.abs((y + panel.size.y) - op.y) < this.SNAP_DISTANCE) y = op.y - panel.size.y;
       if (Math.abs((y + panel.size.y) - (op.y + other.size.y)) < this.SNAP_DISTANCE) y = op.y + other.size.y - panel.size.y;
     }
 
     return { x, y };
+  }
+
+  /** Find the panel under a given point (front-to-back order) */
+  private panelAt(point: Vec2): Panel | null {
+    const panels = [...this.panels.values()].reverse();
+    for (const panel of panels) {
+      if (!panel.visible) continue;
+      const wp = panel.worldPosition();
+      const h = panel.collapsed ? 28 : panel.size.y;
+      if (point.x >= wp.x && point.x <= wp.x + panel.size.x &&
+          point.y >= wp.y && point.y <= wp.y + h) {
+        return panel;
+      }
+    }
+    return null;
   }
 
   /** Mouse interaction setup */
@@ -185,8 +223,8 @@ export class HUD {
 
     canvas.addEventListener("mousedown", (e) => {
       const point = this.canvasPoint(e);
-      // Check panels (reverse order = front first)
       const nodes = [...this.panels.values()].reverse();
+
       // Check graph nodes first
       for (const child of this.scene.root.children) {
         if (child instanceof Graph) {
@@ -201,14 +239,29 @@ export class HUD {
       }
 
       for (const panel of nodes) {
-        // Check resize handle first (bottom-right 12x12 corner)
+        // Check close button (top-right area of header)
         const wp = panel.worldPosition();
+        if (panel.closable) {
+          const closeX = wp.x + panel.size.x - 20;
+          const closeY = wp.y;
+          if (point.x >= closeX && point.x <= closeX + 20 &&
+              point.y >= closeY && point.y <= closeY + 28) {
+            // Fire close callback if present
+            if (typeof (panel as any).onCloseCallback === "function") {
+              (panel as any).onCloseCallback();
+            } else {
+              panel.visible = false;
+            }
+            return;
+          }
+        }
+
+        // Check resize handle first (bottom-right 12x12 corner)
         const rx = wp.x + panel.size.x;
         const ry = wp.y + (panel.collapsed ? 28 : panel.size.y);
         if (!panel.collapsed && Math.abs(point.x - rx) < 12 && Math.abs(point.y - ry) < 12) {
           this.resizeTarget = panel;
           this.resizeEdge = "se";
-          // Bring to front
           this.scene.root.remove(panel);
           this.scene.root.add(panel);
           break;
@@ -216,7 +269,6 @@ export class HUD {
         if (panel.isInHeader(point)) {
           this.dragTarget = panel;
           panel.startDrag(point);
-          // Bring to front
           this.scene.root.remove(panel);
           this.scene.root.add(panel);
           break;
@@ -232,37 +284,33 @@ export class HUD {
         this.handleResize(point);
       } else if (this.dragTarget) {
         this.dragTarget.drag(point);
-        // Apply magnetic snapping
         const snapped = this.magneticSnap(this.dragTarget, this.dragTarget.position);
         this.dragTarget.position.x = snapped.x;
         this.dragTarget.position.y = snapped.y;
       } else {
-        // Hover detection
         const node = this.scene.findAt(point);
         if (node !== this.hoverTarget) {
           this.hoverTarget = node;
-          // Check graph nodes for pointer cursor
-        for (const child of this.scene.root.children) {
-          if (child instanceof Graph) {
-            const hitNode = child.findNodeAt(point.x, point.y);
-            if (hitNode) {
-              canvas.style.cursor = "grab";
-              return;
+          for (const child of this.scene.root.children) {
+            if (child instanceof Graph) {
+              const hitNode = child.findNodeAt(point.x, point.y);
+              if (hitNode) {
+                canvas.style.cursor = "grab";
+                return;
+              }
             }
           }
-        }
-        // Check resize corners
-        let isResize = false;
-        for (const [, p] of this.panels) {
-          if (p.collapsed) continue;
-          const wp2 = p.worldPosition();
-          if (Math.abs(point.x - (wp2.x + p.size.x)) < 12 && Math.abs(point.y - (wp2.y + p.size.y)) < 12) {
-            canvas.style.cursor = "se-resize";
-            isResize = true;
-            break;
+          let isResize = false;
+          for (const [, p] of this.panels) {
+            if (p.collapsed) continue;
+            const wp2 = p.worldPosition();
+            if (Math.abs(point.x - (wp2.x + p.size.x)) < 12 && Math.abs(point.y - (wp2.y + p.size.y)) < 12) {
+              canvas.style.cursor = "se-resize";
+              isResize = true;
+              break;
+            }
           }
-        }
-        if (!isResize) canvas.style.cursor = node ? "pointer" : "default";
+          if (!isResize) canvas.style.cursor = node ? "pointer" : "default";
         }
       }
     });
@@ -283,6 +331,16 @@ export class HUD {
       }
     });
 
+    // Wheel event — forward to panel under cursor for scrolling
+    canvas.addEventListener("wheel", (e) => {
+      const point = this.canvasPoint(e);
+      const panel = this.panelAt(point);
+      if (panel && typeof (panel as any).scroll === "function") {
+        e.preventDefault();
+        (panel as any).scroll(e.deltaY);
+      }
+    }, { passive: false });
+
     canvas.addEventListener("dblclick", (e) => {
       const point = this.canvasPoint(e);
 
@@ -292,7 +350,7 @@ export class HUD {
           const hitNode = child.findNodeAt(point.x, point.y);
           if (hitNode) {
             this.handleGraphNodeDblClick(child, hitNode);
-            return; // consumed the event
+            return;
           }
         }
       }
@@ -310,13 +368,11 @@ export class HUD {
 
   /** Handle double-click on a graph node: expand or collapse drill-down */
   private handleGraphNodeDblClick(graph: Graph, node: GraphNode) {
-    // Get the shared expanded state from main.ts via window
     const area42 = (window as any).__area42;
     const expandedNodes: Set<string> = area42?.expandedNodes ?? new Set();
 
     const nodeId = node.id;
 
-    // If this is a child node (has parentId), collapse the parent instead
     if (node.parentId) {
       const parentId = node.parentId;
       graph.collapse(parentId);
@@ -325,11 +381,9 @@ export class HUD {
     }
 
     if (expandedNodes.has(nodeId)) {
-      // Collapse
       graph.collapse(nodeId);
       expandedNodes.delete(nodeId);
     } else {
-      // Expand if we have drill-down definitions
       const children = drillDownDefs[nodeId];
       if (children) {
         graph.expand(nodeId, children);

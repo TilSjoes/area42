@@ -2,6 +2,7 @@
  * Area42 Detail Panel
  *
  * Auto-appears when a graph node is clicked. Shows contextual details.
+ * Supports multiple simultaneous panels, scrolling, and close callbacks.
  * Designed for drill-down investigation (AML, dependencies, orchestration).
  */
 
@@ -29,20 +30,29 @@ export interface NodeDetail {
   actions?: { label: string; color?: string; callback: () => void }[];
 }
 
+let detailPanelCounter = 0;
+
 export class DetailPanel extends Panel {
   private detail: NodeDetail | null = null;
   private scrollY = 0;
+  private maxScrollY = 0;
   private lineHeight = 16;
+  private contentHeight = 0;
 
-  constructor(position?: Vec2) {
+  nodeId: string;
+
+  constructor(nodeId: string, position?: Vec2) {
+    detailPanelCounter++;
     super({
-      id: "detail-panel",
+      id: "detail-" + nodeId,
       title: "Details",
       position: position || { x: 20, y: 20 },
       size: { x: 320, y: 400 },
       glass: true,
       titleColor: "#4dabf7",
+      closable: true,
     });
+    this.nodeId = nodeId;
     this.visible = false;
   }
 
@@ -53,10 +63,17 @@ export class DetailPanel extends Panel {
     this.visible = true;
     this.scrollY = 0;
 
-    // Auto-size based on content
-    const lines = detail.sections.reduce((sum, s) => sum + 1 + s.fields.length, 0);
-    const actionsHeight = detail.actions ? 35 : 0;
-    this.size.y = Math.min(500, Math.max(200, 40 + lines * this.lineHeight + actionsHeight + (detail.subtitle ? 20 : 0)));
+    // Calculate content height
+    this.contentHeight = this.calculateContentHeight(detail);
+
+    // Auto-size based on content, but cap at 500
+    const headerHeight = 28;
+    const desiredHeight = headerHeight + this.contentHeight + 10;
+    this.size.y = Math.min(500, Math.max(200, desiredHeight));
+
+    // Calculate max scroll
+    const viewableHeight = this.size.y - headerHeight;
+    this.maxScrollY = Math.max(0, this.contentHeight - viewableHeight + 10);
   }
 
   hide() {
@@ -64,24 +81,49 @@ export class DetailPanel extends Panel {
     this.detail = null;
   }
 
-  toggle(detail: NodeDetail) {
-    if (this.visible && this.detail?.nodeId === detail.nodeId) {
-      this.hide();
-    } else {
-      this.show(detail);
+  /** Scroll the content by deltaY pixels */
+  scroll(deltaY: number) {
+    if (!this.detail || this.collapsed) return;
+    this.scrollY = Math.max(0, Math.min(this.maxScrollY, this.scrollY + deltaY * 0.5));
+  }
+
+  private calculateContentHeight(d: NodeDetail): number {
+    let h = 0;
+    if (d.subtitle) h += 18;
+    for (const section of d.sections) {
+      h += 14; // section header + separator
+      h += section.fields.length * this.lineHeight;
+      h += 8; // section gap
     }
+    if (d.actions) h += 30;
+    return h;
   }
 
   render(ctx: CanvasRenderingContext2D) {
     if (!this.detail) return;
 
-    // Render base panel
+    // Render base panel (glass background, title bar, etc.)
     super.render(ctx);
     if (this.collapsed) return;
 
     const d = this.detail;
+    const headerHeight = 28;
+    const panelW = this.size.x;
+    const panelH = this.size.y;
+    const contentAreaH = panelH - headerHeight;
+
+    // Clip to content area
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(0, headerHeight, panelW, contentAreaH);
+    ctx.clip();
+
+    // Apply scroll offset
+    ctx.save();
+    ctx.translate(0, -this.scrollY);
+
     const x = 12;
-    let y = 36;  // below title bar
+    let y = headerHeight + 8;
 
     // Subtitle
     if (d.subtitle) {
@@ -93,7 +135,6 @@ export class DetailPanel extends Panel {
 
     // Sections
     for (const section of d.sections) {
-      // Section header
       ctx.fillStyle = d.color || "#4dabf7";
       ctx.font = "bold 9px system-ui";
       ctx.letterSpacing = "1px";
@@ -101,41 +142,37 @@ export class DetailPanel extends Panel {
       ctx.letterSpacing = "0px";
       y += 4;
 
-      // Separator line
       ctx.strokeStyle = "rgba(255,255,255,0.06)";
       ctx.beginPath();
       ctx.moveTo(x, y);
-      ctx.lineTo(this.size.x - 12, y);
+      ctx.lineTo(panelW - 12, y);
       ctx.stroke();
       y += 10;
 
-      // Fields
       for (const field of section.fields) {
         const fieldColor = field.color || "#c8d6e5";
 
         if (field.type === "badge") {
-          // Badge: colored rounded rect
           ctx.fillStyle = fieldColor + "22";
           const badgeWidth = ctx.measureText(String(field.value)).width + 12;
-          this.drawRoundRect(ctx, this.size.x - 12 - badgeWidth, y - 10, badgeWidth, 16, 3);
+          this.drawRoundRect(ctx, panelW - 12 - badgeWidth, y - 10, badgeWidth, 16, 3);
           ctx.fill();
           ctx.fillStyle = fieldColor;
           ctx.font = "bold 10px system-ui";
           ctx.textAlign = "right";
-          ctx.fillText(String(field.value), this.size.x - 18, y);
+          ctx.fillText(String(field.value), panelW - 18, y);
           ctx.textAlign = "left";
 
           ctx.fillStyle = "#6b7b8d";
           ctx.font = "10px system-ui";
           ctx.fillText(field.label, x, y);
         } else if (field.type === "bar") {
-          // Progress bar
           ctx.fillStyle = "#6b7b8d";
           ctx.font = "10px system-ui";
           ctx.fillText(field.label, x, y);
 
           const barX = x + 80;
-          const barW = this.size.x - barX - 50;
+          const barW = panelW - barX - 50;
           const pct = typeof field.value === "number" ? field.value : parseFloat(String(field.value)) || 0;
 
           ctx.fillStyle = "rgba(255,255,255,0.03)";
@@ -148,15 +185,13 @@ export class DetailPanel extends Panel {
           ctx.fillStyle = fieldColor;
           ctx.font = "bold 10px system-ui";
           ctx.textAlign = "right";
-          ctx.fillText(pct + "%", this.size.x - 12, y);
+          ctx.fillText(pct + "%", panelW - 12, y);
           ctx.textAlign = "left";
         } else if (field.type === "list") {
-          // Indented list item
           ctx.fillStyle = fieldColor;
           ctx.font = "10px system-ui";
-          ctx.fillText("  • " + field.label + ": " + field.value, x, y);
+          ctx.fillText("  \u2022 " + field.label + ": " + field.value, x, y);
         } else {
-          // Default: label on left, value on right
           ctx.fillStyle = "#6b7b8d";
           ctx.font = "10px system-ui";
           ctx.fillText(field.label, x, y);
@@ -164,14 +199,14 @@ export class DetailPanel extends Panel {
           ctx.fillStyle = fieldColor;
           ctx.font = "bold 11px system-ui";
           ctx.textAlign = "right";
-          ctx.fillText(String(field.value), this.size.x - 12, y);
+          ctx.fillText(String(field.value), panelW - 12, y);
           ctx.textAlign = "left";
         }
 
         y += this.lineHeight;
       }
 
-      y += 8;  // Section gap
+      y += 8;
     }
 
     // Actions
@@ -192,6 +227,18 @@ export class DetailPanel extends Panel {
         ctx.fillText(action.label, ax + 8, y + 2);
         ax += tw + 8;
       }
+    }
+
+    ctx.restore(); // undo translate
+    ctx.restore(); // undo clip
+
+    // Draw scrollbar indicator if content overflows
+    if (this.maxScrollY > 0) {
+      const scrollbarH = Math.max(20, contentAreaH * (contentAreaH / (this.contentHeight + 10)));
+      const scrollbarY = headerHeight + (this.scrollY / this.maxScrollY) * (contentAreaH - scrollbarH);
+      ctx.fillStyle = "rgba(255,255,255,0.12)";
+      this.drawRoundRect(ctx, panelW - 5, scrollbarY, 3, scrollbarH, 1.5);
+      ctx.fill();
     }
   }
 

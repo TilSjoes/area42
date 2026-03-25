@@ -18,6 +18,7 @@ export interface PanelOptions {
   dockable?: boolean;
   color?: string;
   titleColor?: string;
+  compact?: boolean;
 }
 
 export class Panel extends SceneNode {
@@ -28,6 +29,9 @@ export class Panel extends SceneNode {
   dockable: boolean;
   color: string;
   titleColor: string;
+  compact: boolean;
+  onCloseCallback: (() => void) | null = null;
+
   private headerHeight = 28;
   private cornerRadius = 8;
   private dragging = false;
@@ -49,6 +53,18 @@ export class Panel extends SceneNode {
     this.dockable = options.dockable ?? true;
     this.color = options.color || "rgba(123, 104, 238, 0.15)";
     this.titleColor = options.titleColor || "#7b68ee";
+    this.compact = options.compact ?? false;
+
+    if (this.compact) {
+      this.headerHeight = 22;
+      this.cornerRadius = 6;
+    }
+  }
+
+  /** Set a callback for when the close button is clicked */
+  onClose(callback: () => void) {
+    this.onCloseCallback = callback;
+    return this;
   }
 
   onContent(renderer: (ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number) => void) {
@@ -62,13 +78,15 @@ export class Panel extends SceneNode {
     const h = this.collapsed ? this.headerHeight : this.size.y;
     const r = this.cornerRadius;
 
+    const titleFont = this.compact ? "bold 9px system-ui, -apple-system, sans-serif" : "bold 10px system-ui, -apple-system, sans-serif";
+    const titleLetterSpacing = this.compact ? "1px" : "1.5px";
+
     // Glass background
     ctx.save();
     this.roundRect(ctx, x, y, w, h, r);
     if (this.glass) {
       ctx.fillStyle = "rgba(10, 14, 23, 0.75)";
       ctx.fill();
-      // Glass border
       ctx.strokeStyle = "rgba(123, 104, 238, 0.2)";
       ctx.lineWidth = 1;
       ctx.stroke();
@@ -94,17 +112,17 @@ export class Panel extends SceneNode {
 
     // Title bar
     ctx.fillStyle = this.titleColor;
-    ctx.font = "bold 10px system-ui, -apple-system, sans-serif";
+    ctx.font = titleFont;
     ctx.textBaseline = "middle";
-    ctx.letterSpacing = "1.5px";
-    ctx.fillText(this.title.toUpperCase(), x + 12, y + this.headerHeight / 2);
+    ctx.letterSpacing = titleLetterSpacing;
+    ctx.fillText(this.title.toUpperCase(), x + (this.compact ? 8 : 12), y + this.headerHeight / 2);
 
     // Close button
     if (this.closable) {
       ctx.fillStyle = "rgba(255,255,255,0.3)";
-      ctx.font = "12px system-ui";
+      ctx.font = this.compact ? "10px system-ui" : "12px system-ui";
       ctx.textAlign = "right";
-      ctx.fillText("×", x + w - 10, y + this.headerHeight / 2);
+      ctx.fillText("\u00d7", x + w - 10, y + this.headerHeight / 2);
       ctx.textAlign = "left";
     }
 
@@ -120,9 +138,10 @@ export class Panel extends SceneNode {
       if (this.contentRenderer) {
         ctx.save();
         ctx.beginPath();
+        const pad = this.compact ? 4 : 8;
         ctx.rect(x + 1, y + this.headerHeight + 1, w - 2, h - this.headerHeight - 2);
         ctx.clip();
-        this.contentRenderer(ctx, x + 8, y + this.headerHeight + 8, w - 16, h - this.headerHeight - 16);
+        this.contentRenderer(ctx, x + pad, y + this.headerHeight + pad, w - pad * 2, h - this.headerHeight - pad * 2);
         ctx.restore();
       }
     }
