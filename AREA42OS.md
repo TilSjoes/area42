@@ -278,3 +278,48 @@ The key differentiator: **every competitor bolts AI onto an existing desktop par
 Start with Phase 0 on Trillian. Prove intent-driven layout works. Then decide if it's worth the full compositor build.
 
 The question isn't "can we build it?" — it's "how fast can we get to Phase 0?"
+
+## Phase 0 Alternative: VM on Trillian
+
+Instead of dual-boot, run Area42OS PoC in a VM on Trillian:
+
+### Hypervisor
+- **Hyper-V** (built into Windows 11 Pro, already available on Trillian)
+- OR **VirtualBox** (free, GPU passthrough possible)
+- Hyper-V preferred: native, fast, Enhanced Session for clipboard/audio
+
+### VM Spec
+- 4 cores, 8-16GB RAM (Trillian has plenty)
+- 50GB dynamic disk
+- GPU: Hyper-V doesn't do full GPU passthrough, but:
+  - RemoteFX vGPU for basic acceleration (deprecated but works)
+  - OR run Area42 compositor in software mode (Mesa llvmpipe)
+  - OR access via browser from Windows (Area42 is Canvas — runs in any browser)
+  - Full GPU passthrough possible with VirtualBox if needed later
+
+### The Browser Trick
+Since Area42 renders on Canvas, the PoC can run as:
+1. VM runs minimal Linux + Wayland + browser in kiosk mode
+2. Area42 HUD runs as the "desktop" in the browser
+3. Applications launch inside the VM but Area42 manages layout
+4. Access from Windows browser too (Vite serves on VM's IP)
+
+This means Phase 0 works WITHOUT custom compositor:
+- NixOS/Arch minimal in VM
+- Hyprland or Sway as base compositor
+- Full-screen Chromium running Area42
+- Spine daemon classifying window focus (via Hyprland IPC)
+- NATS for messaging
+- The browser IS the window manager
+
+### Steps
+1. Enable Hyper-V on Trillian (Settings → Features)
+2. Create VM: 4 cores, 12GB RAM, 50GB disk
+3. Install NixOS minimal (or Arch)
+4. Install: Hyprland, Chromium, Node.js, NATS
+5. Clone area42 repo, npm install, npm run dev
+6. Configure Hyprland to auto-launch Chromium in kiosk mode pointing to localhost:4242
+7. Install Spine daemon + NATS
+8. Test: open terminal, IDE, browser → Spine classifies → Area42 rearranges
+
+### Timeline: 1-2 days to working PoC
