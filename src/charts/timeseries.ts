@@ -147,7 +147,7 @@ export class TimeSeries {
     ctx.closePath();
 
     const grad = ctx.createLinearGradient(x, y, x, y + h);
-    grad.addColorStop(0, this.color + Math.round(this.fillOpacity * 255).toString(16).padStart(2, "0"));
+    grad.addColorStop(0, withAlpha(this.color, Math.round(this.fillOpacity * 255).toString(16).padStart(2, "0")));
     grad.addColorStop(1, withAlpha(this.color, "00"));
     ctx.fillStyle = grad;
     ctx.fill();
