@@ -1,0 +1,30 @@
+{
+  "name": "@dontpanic/area42",
+  "version": "0.1.0",
+  "description": "Futuristic HUD visualization engine for real-time system monitoring",
+  "type": "module",
+  "main": "dist/area42.js",
+  "module": "dist/area42.mjs",
+  "types": "dist/area42.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/area42.mjs",
+      "require": "./dist/area42.js",
+      "types": "./dist/area42.d.ts"
+    }
+  },
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc && vite build",
+    "preview": "vite preview",
+    "lint": "eslint src/",
+    "test": "vitest"
+  },
+  "keywords": ["hud", "visualization", "dashboard", "real-time", "canvas", "webgl", "monitoring", "agent", "nats"],
+  "author": "DONTPANIC AS <frode@dontpanic.no>",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/TilSjoes/area42.git"
+  }
+}
