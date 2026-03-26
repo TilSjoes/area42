@@ -7,7 +7,7 @@
 
 import { Renderer, RenderContext } from "./renderer.js";
 import { Scene, SceneNode, Vec2 } from "./scene.js";
-import { Panel, PanelOptions } from "../panels/panel.js";
+import { Panel, PanelOptions, SnapZone } from "../panels/panel.js";
 import { Graph } from "../graph/graph.js";
 import type { GraphNode, GraphEdge, EdgeDetail } from "../graph/graph.js";
 import { Theme, NeonTheme } from "../themes/neon.js";
@@ -68,6 +68,7 @@ export class HUD {
   private panStart: Vec2 = { x: 0, y: 0 };
   private panGraph: Graph | null = null;
   private panStartOffset: Vec2 = { x: 0, y: 0 };
+// Snap zone preview  private snapPreview: SnapZone = null;
 
   // Touch pinch state
   private lastPinchDist = 0;
@@ -112,6 +113,7 @@ export class HUD {
         this.drawGrid(rc);
       }
 
+// Render snap zone preview      if (this.snapPreview && this.dragTarget) {        this.drawSnapPreview(rc, this.snapPreview);      }
       // Render scene
       this.scene.render(rc.ctx);
 
@@ -192,6 +194,37 @@ export class HUD {
     }
   }
 
+
+  /** Draw snap zone preview overlay */
+  private drawSnapPreview(rc: RenderContext, zone: SnapZone): void {
+    if (!zone) return;
+    const ctx = rc.ctx;
+    const w = rc.width;
+    const h = rc.height;
+    const m = 4;
+    const halfW = (w - m * 3) / 2;
+    const halfH = (h - m * 3) / 2;
+    let rx = 0, ry = 0, rw = 0, rh = 0;
+    switch (zone) {
+      case "top": rx = m; ry = m; rw = w - m * 2; rh = halfH; break;
+      case "bottom": rx = m; ry = halfH + m * 2; rw = w - m * 2; rh = halfH; break;
+      case "left": rx = m; ry = m; rw = halfW; rh = h - m * 2; break;
+      case "right": rx = halfW + m * 2; ry = m; rw = halfW; rh = h - m * 2; break;
+      case "top-left": rx = m; ry = m; rw = halfW; rh = halfH; break;
+      case "top-right": rx = halfW + m * 2; ry = m; rw = halfW; rh = halfH; break;
+      case "bottom-left": rx = m; ry = halfH + m * 2; rw = halfW; rh = halfH; break;
+      case "bottom-right": rx = halfW + m * 2; ry = halfH + m * 2; rw = halfW; rh = halfH; break;
+    }
+    ctx.save();
+    ctx.fillStyle = "rgba(123, 104, 238, 0.08)";
+    ctx.strokeStyle = "rgba(123, 104, 238, 0.35)";
+    ctx.lineWidth = 2;
+    ctx.setLineDash([6, 4]);
+    ctx.fillRect(rx, ry, rw, rh);
+    ctx.strokeRect(rx, ry, rw, rh);
+    ctx.setLineDash([]);
+    ctx.restore();
+  }
   private readonly SNAP_DISTANCE = 15;
   private readonly EDGE_DOCK_MARGIN = 8;
   private resizeTarget: Panel | null = null;
@@ -232,6 +265,7 @@ export class HUD {
     const panels = [...this.panels.values()].reverse();
     for (const panel of panels) {
       if (!panel.visible) continue;
+if (panel.minimized) {        if (panel.contains(point)) return panel;        continue;      }
       const wp = panel.worldPosition();
       const h = panel.collapsed ? 28 : panel.size.y;
       if (point.x >= wp.x && point.x <= wp.x + panel.size.x &&
@@ -333,6 +367,7 @@ export class HUD {
 
       for (const panel of nodes) {
         const wp = panel.worldPosition();
+// Click on minimized dot to restore        if (panel.minimized && panel.contains(point)) {          panel.restore();          return;        }        // Minimize button click        if (panel.isInMinimizeButton(point)) {          panel.minimize();          return;        }
         if (panel.closable) {
           const closeX = wp.x + panel.size.x - 20;
           const closeY = wp.y;
@@ -388,6 +423,7 @@ export class HUD {
         const snapped = this.magneticSnap(this.dragTarget, this.dragTarget.position);
         this.dragTarget.position.x = snapped.x;
         this.dragTarget.position.y = snapped.y;
+// Detect snap zone preview during drag        this.snapPreview = Panel.detectSnapZone(point, this.renderer.width, this.renderer.height);
       } else {
         const node = this.scene.findAt(point);
         if (node !== this.hoverTarget) {
@@ -401,6 +437,7 @@ export class HUD {
             if (hitNode) {
               child.hoveredEdge = null;
               canvas.style.cursor = "grab";
+child.showTooltip(hitNode, point.x, point.y);
               cursorSet = true;
               break;
             }
@@ -418,7 +455,7 @@ export class HUD {
         if (!cursorSet) {
           // Clear edge hover if we left edges
           for (const child of this.scene.root.children) {
-            if (child instanceof Graph) child.hoveredEdge = null;
+            if (child instanceof Graph) { child.hoveredEdge = null; child.hideTooltip(); }
           }
           let isResize = false;
           for (const [, p] of this.panels) {
@@ -443,6 +480,7 @@ export class HUD {
         c.style.cursor = "default";
       }
       if (this.dragTarget) {
+// Apply snap zone if dragged to edge        if (this.snapPreview) {          this.dragTarget.snapTo(this.snapPreview, this.renderer.width, this.renderer.height);          this.snapPreview = null;        }
         this.dragTarget.endDrag();
         this.dragTarget = null;
       }
@@ -668,6 +706,7 @@ export class HUD {
   private buildPanelContextMenu(panel: Panel): MenuItem[] {
     return [
       { label: panel.collapsed ? "Expand" : "Collapse", icon: panel.collapsed ? "▼" : "▲", action: () => { panel.collapsed = !panel.collapsed; } },
+{ label: panel.minimized ? "Restore" : "Minimize", icon: panel.minimized ? "u25a1" : "u2014", action: () => { if (panel.minimized) panel.restore(); else panel.minimize(); } },
       { label: "Close", icon: "×", shortcut: "Del", action: () => { if (typeof (panel as any).onCloseCallback === "function") { (panel as any).onCloseCallback(); } else { panel.visible = false; } } },
       { label: "", separator: true, action: () => {} },
       { label: "Reset Position", icon: "↺", action: () => { panel.position.x = 50; panel.position.y = 50; } },

@@ -150,6 +150,7 @@ export class Graph extends SceneNode {
 
   /** Currently hovered edge (for highlight effect) */
   hoveredEdge: GraphEdge | null = null;
+/** Tooltip state for node hover */  private tooltip: { x: number; y: number; text: string; subtext: string; visible: boolean; color: string } = { x: 0, y: 0, text: "", subtext: "", visible: false, color: "#ffffff" };
 
   // Pan and zoom state
   offsetX = 0;
@@ -573,6 +574,51 @@ export class Graph extends SceneNode {
 
     // --- Render particles (inside graph transform, same as nodes/edges) ---
     this.particleSys.render(ctx);
+
+    // --- Render tooltip ---
+    if (this.tooltip.visible) {
+      ctx.save();
+      ctx.font = "bold 10px system-ui, sans-serif";
+      const textW = ctx.measureText(this.tooltip.text).width;
+      ctx.font = "9px system-ui, sans-serif";
+      const subtextW = this.tooltip.subtext ? ctx.measureText(this.tooltip.subtext).width : 0;
+      const tipW = Math.max(textW, subtextW) + 16;
+      const tipH = this.tooltip.subtext ? 36 : 24;
+      const tipX = this.tooltip.x + 12;
+      const tipY = this.tooltip.y - tipH - 8;
+      const tipR = 4;
+
+      // Background
+      ctx.beginPath();
+      ctx.moveTo(tipX + tipR, tipY);
+      ctx.lineTo(tipX + tipW - tipR, tipY);
+      ctx.quadraticCurveTo(tipX + tipW, tipY, tipX + tipW, tipY + tipR);
+      ctx.lineTo(tipX + tipW, tipY + tipH - tipR);
+      ctx.quadraticCurveTo(tipX + tipW, tipY + tipH, tipX + tipW - tipR, tipY + tipH);
+      ctx.lineTo(tipX + tipR, tipY + tipH);
+      ctx.quadraticCurveTo(tipX, tipY + tipH, tipX, tipY + tipH - tipR);
+      ctx.lineTo(tipX, tipY + tipR);
+      ctx.quadraticCurveTo(tipX, tipY, tipX + tipR, tipY);
+      ctx.closePath();
+      ctx.fillStyle = "rgba(10, 14, 23, 0.92)";
+      ctx.fill();
+      ctx.strokeStyle = this.tooltip.color;
+      ctx.lineWidth = 1;
+      ctx.stroke();
+
+      // Text
+      ctx.fillStyle = this.tooltip.color;
+      ctx.font = "bold 10px system-ui, sans-serif";
+      ctx.textAlign = "left";
+      ctx.textBaseline = "top";
+      ctx.fillText(this.tooltip.text, tipX + 8, tipY + 5);
+      if (this.tooltip.subtext) {
+        ctx.fillStyle = "#6b7b8d";
+        ctx.font = "9px system-ui, sans-serif";
+        ctx.fillText(this.tooltip.subtext, tipX + 8, tipY + 20);
+      }
+      ctx.restore();
+    }
 
     ctx.restore(); // undo zoom/pan transform
   }
@@ -1068,5 +1114,24 @@ export class Graph extends SceneNode {
         layer[ni].vy = 0;
       }
     }
+  }
+
+  /** Show tooltip near a node at canvas coordinates */
+  showTooltip(node: GraphNode, canvasX: number, canvasY: number): void {
+    const wp = this.worldPosition();
+    const dataKeys = node.data ? Object.keys(node.data).slice(0, 2).map(k => `${k}: ${node.data[k]}`).join(", ") : "";
+    this.tooltip = {
+      x: (canvasX - wp.x - this.offsetX) / this.zoom,
+      y: (canvasY - wp.y - this.offsetY) / this.zoom,
+      text: node.label,
+      subtext: dataKeys || node.id,
+      visible: true,
+      color: node.color
+    };
+  }
+
+  /** Hide the tooltip */
+  hideTooltip(): void {
+    this.tooltip.visible = false;
   }
 }

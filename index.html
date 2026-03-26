@@ -3,15 +3,272 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Area42 — Demo</title>
+  <title>Area42 — Futuristic HUD Visualization Engine</title>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
-    body { overflow: hidden; font-family: system-ui, -apple-system, sans-serif; }
-    #hud { width: 100vw; height: 100vh; }
+    body {
+      background: #0a0e17;
+      color: #c8d6e5;
+      font-family: system-ui, -apple-system, sans-serif;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+
+    .hero {
+      text-align: center;
+      padding: 80px 20px 40px;
+      position: relative;
+    }
+
+    .hero::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 400px;
+      height: 400px;
+      background: radial-gradient(circle, rgba(123,104,238,0.08) 0%, transparent 70%);
+      pointer-events: none;
+    }
+
+    .logo {
+      font-size: 64px;
+      font-weight: 900;
+      letter-spacing: 8px;
+      background: linear-gradient(135deg, #7b68ee, #00d4aa);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+      margin-bottom: 12px;
+    }
+
+    .subtitle {
+      font-size: 14px;
+      color: #6b7b8d;
+      letter-spacing: 3px;
+      text-transform: uppercase;
+      margin-bottom: 8px;
+    }
+
+    .version {
+      font-size: 11px;
+      color: #3d4f63;
+      letter-spacing: 2px;
+    }
+
+    .demos {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 16px;
+      max-width: 900px;
+      width: 100%;
+      padding: 40px 20px;
+    }
+
+    .card {
+      background: rgba(19, 26, 43, 0.85);
+      border: 1px solid rgba(30, 45, 74, 0.6);
+      border-radius: 8px;
+      padding: 24px;
+      text-decoration: none;
+      color: inherit;
+      transition: all 0.2s ease;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .card::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      height: 2px;
+      background: linear-gradient(90deg, transparent, var(--accent, #7b68ee), transparent);
+      opacity: 0.6;
+    }
+
+    .card:hover {
+      border-color: rgba(123, 104, 238, 0.4);
+      transform: translateY(-2px);
+      box-shadow: 0 8px 32px rgba(123, 104, 238, 0.1);
+    }
+
+    .card-icon {
+      font-size: 28px;
+      margin-bottom: 12px;
+      display: block;
+    }
+
+    .card-title {
+      font-size: 16px;
+      font-weight: 700;
+      letter-spacing: 1px;
+      margin-bottom: 8px;
+      color: #e0e6ed;
+    }
+
+    .card-desc {
+      font-size: 12px;
+      color: #6b7b8d;
+      line-height: 1.6;
+    }
+
+    .card-tag {
+      display: inline-block;
+      margin-top: 12px;
+      font-size: 9px;
+      letter-spacing: 1.5px;
+      text-transform: uppercase;
+      padding: 3px 8px;
+      border-radius: 3px;
+      background: rgba(123, 104, 238, 0.12);
+      color: #7b68ee;
+      border: 1px solid rgba(123, 104, 238, 0.2);
+    }
+
+    .card.accent-green { --accent: #00d4aa; }
+    .card.accent-green .card-tag { background: rgba(0,212,170,0.12); color: #00d4aa; border-color: rgba(0,212,170,0.2); }
+    .card.accent-blue { --accent: #4dabf7; }
+    .card.accent-blue .card-tag { background: rgba(77,171,247,0.12); color: #4dabf7; border-color: rgba(77,171,247,0.2); }
+    .card.accent-orange { --accent: #f97316; }
+    .card.accent-orange .card-tag { background: rgba(249,115,22,0.12); color: #f97316; border-color: rgba(249,115,22,0.2); }
+    .card.accent-red { --accent: #ff6b6b; }
+    .card.accent-red .card-tag { background: rgba(255,107,107,0.12); color: #ff6b6b; border-color: rgba(255,107,107,0.2); }
+
+    .footer {
+      padding: 40px 20px;
+      text-align: center;
+      color: #3d4f63;
+      font-size: 11px;
+      letter-spacing: 1px;
+    }
+
+    .footer a {
+      color: #6b7b8d;
+      text-decoration: none;
+    }
+    .footer a:hover {
+      color: #7b68ee;
+    }
+
+    .features {
+      display: flex;
+      gap: 32px;
+      justify-content: center;
+      flex-wrap: wrap;
+      padding: 0 20px 20px;
+      max-width: 900px;
+    }
+
+    .feature {
+      font-size: 11px;
+      color: #4d5f73;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+    }
+
+    .feature::before {
+      content: '';
+      display: inline-block;
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: #00d4aa;
+      margin-right: 6px;
+      vertical-align: middle;
+    }
   </style>
 </head>
 <body>
-  <div id="hud"></div>
-  <script type="module" src="/src/demo/main.ts"></script>
+
+  <div class="hero">
+    <div class="logo">AREA42</div>
+    <div class="subtitle">Futuristic HUD Visualization Engine</div>
+    <div class="version">v0.1.0 &mdash; Zero-dependency Canvas 2D</div>
+  </div>
+
+  <div class="features">
+    <span class="feature">Force-Directed Graphs</span>
+    <span class="feature">Glass Panels</span>
+    <span class="feature">Particle Effects</span>
+    <span class="feature">Real-Time Data</span>
+    <span class="feature">Snap Zones</span>
+  </div>
+
+  <div class="demos">
+    <a href="/src/demo/main.ts" class="card" onclick="event.preventDefault(); window.location.href='/?demo=main';">
+      <span class="card-icon">&#x25C8;</span>
+      <div class="card-title">Main Demo</div>
+      <div class="card-desc">
+        The flagship demo. Force-directed graph with DONTPANIC infrastructure nodes,
+        animated particle flows, glass panels with metrics, and interactive drill-down.
+      </div>
+      <span class="card-tag">Interactive Graph</span>
+    </a>
+
+    <a href="/governance.html" class="card accent-red">
+      <span class="card-icon">&#x2694;</span>
+      <div class="card-title">Governance</div>
+      <div class="card-desc">
+        Security and compliance visualization. Audit trail table, GDPR/OWASP mapping,
+        risk assessment panels, and governance agent status monitoring.
+      </div>
+      <span class="card-tag">Security</span>
+    </a>
+
+    <a href="#" class="card accent-green" onclick="event.preventDefault();">
+      <span class="card-icon">&#x2B21;</span>
+      <div class="card-title">Router</div>
+      <div class="card-desc">
+        Marvin intelligence router visualization. Real-time request classification,
+        model tier selection, latency sparklines, and routing decision flow.
+      </div>
+      <span class="card-tag">Coming Soon</span>
+    </a>
+
+    <a href="#" class="card accent-blue" onclick="event.preventDefault();">
+      <span class="card-icon">&#x2500;&#x2500;&#x25CF;</span>
+      <div class="card-title">Timeline</div>
+      <div class="card-desc">
+        Temporal event visualization. Mission timelines, agent activity streams,
+        and time-series overlays with zoom and pan navigation.
+      </div>
+      <span class="card-tag">Coming Soon</span>
+    </a>
+
+    <a href="#" class="card accent-orange" onclick="event.preventDefault();">
+      <span class="card-icon">&#x1F50D;</span>
+      <div class="card-title">Investigation</div>
+      <div class="card-desc">
+        Interactive investigation board. Link analysis between entities,
+        evidence clustering, and collaborative annotation tools.
+      </div>
+      <span class="card-tag">Coming Soon</span>
+    </a>
+  </div>
+
+  <div class="footer">
+    <a href="https://github.com/TilSjoes/area42">GitHub</a>
+    &nbsp;&middot;&nbsp;
+    DONTPANIC AS &nbsp;&middot;&nbsp; 2026
+  </div>
+
+  <script>
+    // Route to demo if ?demo=main param present
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('demo') === 'main') {
+      document.body.innerHTML = '<div id="hud" style="width:100vw;height:100vh;"></div>';
+      document.body.style.overflow = 'hidden';
+      const script = document.createElement('script');
+      script.type = 'module';
+      script.src = '/src/demo/main.ts';
+      document.body.appendChild(script);
+    }
+  </script>
+
 </body>
 </html>

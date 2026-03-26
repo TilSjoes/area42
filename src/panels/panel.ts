@@ -3,6 +3,7 @@
  *
  * Floating, draggable, semi-transparent panel with glass morphism effect.
  * The signature UI element of Area42.
+ * Supports minimize-to-icon and edge snap zones.
  */
 
 import { SceneNode, Vec2 } from "../core/scene.js";
@@ -22,6 +23,9 @@ export interface PanelOptions {
   compact?: boolean;
 }
 
+/** Snap zone identifiers for edge-docking */
+export type SnapZone = 'top' | 'bottom' | 'left' | 'right' | 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right' | null;
+
 export class Panel extends SceneNode {
   title: string;
   glass: boolean;
@@ -32,6 +36,17 @@ export class Panel extends SceneNode {
   titleColor: string;
   compact: boolean;
   onCloseCallback: (() => void) | null = null;
+
+  /** Minimized state: panel shrinks to a small icon dot */
+  minimized = false;
+  private minimizedDotSize = 24;
+
+  /** Saved position/size before snapping, for restore */
+  private preSnapPosition: Vec2 | null = null;
+  private preSnapSize: Vec2 | null = null;
+
+  /** Current snap zone (null = floating) */
+  snapZone: SnapZone = null;
 
   private headerHeight = 28;
   private cornerRadius = 8;
@@ -73,8 +88,124 @@ export class Panel extends SceneNode {
     return this;
   }
 
+  /** Minimize panel to a small icon dot */
+  minimize(): void {
+    if (!this.minimized) {
+      this.minimized = true;
+    }
+  }
+
+  /** Restore panel from minimized state */
+  restore(): void {
+    if (this.minimized) {
+      this.minimized = false;
+    }
+  }
+
+  /** Snap panel to a zone within a container of given dimensions */
+  snapTo(zone: SnapZone, containerW: number, containerH: number): void {
+    if (zone === null) {
+      // Unsnap: restore previous position/size
+      if (this.preSnapPosition && this.preSnapSize) {
+        this.position.x = this.preSnapPosition.x;
+        this.position.y = this.preSnapPosition.y;
+        this.size.x = this.preSnapSize.x;
+        this.size.y = this.preSnapSize.y;
+      }
+      this.snapZone = null;
+      return;
+    }
+
+    // Save pre-snap state (only if not already snapped)
+    if (!this.snapZone) {
+      this.preSnapPosition = { x: this.position.x, y: this.position.y };
+      this.preSnapSize = { x: this.size.x, y: this.size.y };
+    }
+
+    const margin = 4;
+    const halfW = (containerW - margin * 3) / 2;
+    const halfH = (containerH - margin * 3) / 2;
+
+    switch (zone) {
+      case 'top':
+        this.position.x = margin;
+        this.position.y = margin;
+        this.size.x = containerW - margin * 2;
+        this.size.y = halfH;
+        break;
+      case 'bottom':
+        this.position.x = margin;
+        this.position.y = halfH + margin * 2;
+        this.size.x = containerW - margin * 2;
+        this.size.y = halfH;
+        break;
+      case 'left':
+        this.position.x = margin;
+        this.position.y = margin;
+        this.size.x = halfW;
+        this.size.y = containerH - margin * 2;
+        break;
+      case 'right':
+        this.position.x = halfW + margin * 2;
+        this.position.y = margin;
+        this.size.x = halfW;
+        this.size.y = containerH - margin * 2;
+        break;
+      case 'top-left':
+        this.position.x = margin;
+        this.position.y = margin;
+        this.size.x = halfW;
+        this.size.y = halfH;
+        break;
+      case 'top-right':
+        this.position.x = halfW + margin * 2;
+        this.position.y = margin;
+        this.size.x = halfW;
+        this.size.y = halfH;
+        break;
+      case 'bottom-left':
+        this.position.x = margin;
+        this.position.y = halfH + margin * 2;
+        this.size.x = halfW;
+        this.size.y = halfH;
+        break;
+      case 'bottom-right':
+        this.position.x = halfW + margin * 2;
+        this.position.y = halfH + margin * 2;
+        this.size.x = halfW;
+        this.size.y = halfH;
+        break;
+    }
+
+    this.snapZone = zone;
+  }
+
+  /** Detect which snap zone a position falls into, given container dimensions */
+  static detectSnapZone(point: Vec2, containerW: number, containerH: number, threshold: number = 30): SnapZone {
+    const nearTop = point.y < threshold;
+    const nearBottom = point.y > containerH - threshold;
+    const nearLeft = point.x < threshold;
+    const nearRight = point.x > containerW - threshold;
+
+    if (nearTop && nearLeft) return 'top-left';
+    if (nearTop && nearRight) return 'top-right';
+    if (nearBottom && nearLeft) return 'bottom-left';
+    if (nearBottom && nearRight) return 'bottom-right';
+    if (nearTop) return 'top';
+    if (nearBottom) return 'bottom';
+    if (nearLeft) return 'left';
+    if (nearRight) return 'right';
+    return null;
+  }
+
   render(ctx: CanvasRenderingContext2D) {
-    const { x, y } = { x: 0, y: 0 }; // relative to parent
+    // Minimized: render as a small colored dot with title initial
+    if (this.minimized) {
+      this.renderMinimizedDot(ctx);
+      return;
+    }
+
+    const { x, y } = { x: 0, y: 0 };
     const w = this.size.x;
     const h = this.collapsed ? this.headerHeight : this.size.y;
     const r = this.cornerRadius;
@@ -105,7 +236,6 @@ export class Panel extends SceneNode {
     ctx.clip();
     const grad = ctx.createLinearGradient(x, y, x + w, y);
     grad.addColorStop(0, "transparent");
-    // Handle both hex (#ff6b6b) and rgba() color formats
     let gradColor = this.titleColor;
     if (gradColor.startsWith("#")) {
       gradColor = withAlpha(gradColor, "88");
@@ -125,11 +255,15 @@ export class Panel extends SceneNode {
     ctx.letterSpacing = titleLetterSpacing;
     ctx.fillText(this.title.toUpperCase(), x + (this.compact ? 8 : 12), y + this.headerHeight / 2);
 
-    // Close button
+    // Minimize button (before close button)
     if (this.closable) {
+      // Minimize button
       ctx.fillStyle = "rgba(255,255,255,0.3)";
       ctx.font = this.compact ? "10px system-ui" : "12px system-ui";
       ctx.textAlign = "right";
+      ctx.fillText("\u2013", x + w - 26, y + this.headerHeight / 2);
+
+      // Close button
       ctx.fillText("\u00d7", x + w - 10, y + this.headerHeight / 2);
       ctx.textAlign = "left";
     }
@@ -185,6 +319,48 @@ export class Panel extends SceneNode {
     }
   }
 
+  /** Render the minimized dot icon */
+  private renderMinimizedDot(ctx: CanvasRenderingContext2D): void {
+    const s = this.minimizedDotSize;
+    const cx = s / 2;
+    const cy = s / 2;
+    const r = s / 2 - 2;
+
+    // Glow
+    ctx.save();
+    ctx.shadowColor = this.titleColor.startsWith("#") ? this.titleColor : "#7b68ee";
+    ctx.shadowBlur = 12;
+
+    // Circle background
+    ctx.beginPath();
+    ctx.arc(cx, cy, r, 0, Math.PI * 2);
+    ctx.fillStyle = "rgba(10, 14, 23, 0.85)";
+    ctx.fill();
+    ctx.strokeStyle = this.titleColor;
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+
+    // Title initial
+    ctx.fillStyle = this.titleColor;
+    ctx.font = "bold 10px system-ui, sans-serif";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText(this.title.charAt(0).toUpperCase(), cx, cy);
+
+    ctx.restore();
+  }
+
+  /** Override contains for minimized hit testing */
+  override contains(point: Vec2): boolean {
+    if (this.minimized) {
+      const wp = this.worldPosition();
+      const s = this.minimizedDotSize;
+      return point.x >= wp.x && point.x <= wp.x + s &&
+             point.y >= wp.y && point.y <= wp.y + s;
+    }
+    return super.contains(point);
+  }
+
   private roundRect(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number) {
     ctx.beginPath();
     ctx.moveTo(x + r, y);
@@ -218,8 +394,19 @@ export class Panel extends SceneNode {
   }
 
   isInHeader(point: Vec2): boolean {
+    if (this.minimized) return false;
     const wp = this.worldPosition();
     return point.x >= wp.x && point.x <= wp.x + this.size.x &&
            point.y >= wp.y && point.y <= wp.y + this.headerHeight;
+  }
+
+  /** Check if a point hits the minimize button */
+  isInMinimizeButton(point: Vec2): boolean {
+    if (this.minimized || !this.closable) return false;
+    const wp = this.worldPosition();
+    const btnX = wp.x + this.size.x - 34;
+    const btnY = wp.y;
+    return point.x >= btnX && point.x <= btnX + 16 &&
+           point.y >= btnY && point.y <= btnY + this.headerHeight;
   }
 }

@@ -24,7 +24,7 @@ export type { GraphNodeOptions, GraphEdgeOptions, ParticleOptions, LayoutType } 
 
 // Panels
 export { Panel } from "./panels/panel.js";
-export type { PanelOptions } from "./panels/panel.js";
+export type { PanelOptions, SnapZone } from "./panels/panel.js";
 export { MetricDisplay } from "./panels/metric.js";
 export type { MetricEntry } from "./panels/metric.js";
 
