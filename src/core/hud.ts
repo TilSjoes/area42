@@ -829,8 +829,8 @@ child.showTooltip(hitNode, point.x, point.y);
       { label: "", separator: true, action: () => {} },
       { label: this.gridVisible ? "Hide Grid" : "Show Grid", icon: "#", shortcut: "G", action: () => { this.gridVisible = !this.gridVisible; } },
       { label: "", separator: true, action: () => {} },
-      { label: "Screenshot (PNG)", icon: "D83dDcf7", action: () => { this._exporter?.downloadPNG(); } },
-      { label: "Export Graph as JSON", icon: "D83dDcc4", action: () => { for (const child of this.scene.root.children) { if (child instanceof Graph) { this._exporter?.downloadJSON(child); break; } } } },
+      { label: "Screenshot (PNG)", icon: "📷", action: () => { this._exporter?.downloadPNG(); } },
+      { label: "Export Graph as JSON", icon: "📄", action: () => { for (const child of this.scene.root.children) { if (child instanceof Graph) { this._exporter?.downloadJSON(child); break; } } } },
     ];
   }
 
