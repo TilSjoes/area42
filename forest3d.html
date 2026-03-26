@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Area42 — 3D Forest (Experimental)</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      background: #0a0e17;
+      overflow: hidden;
+      font-family: system-ui, -apple-system, sans-serif;
+    }
+    #scene {
+      width: 100vw;
+      height: 100vh;
+      position: relative;
+    }
+    #scene canvas {
+      display: block;
+    }
+
+    /* UI Overlay */
+    .ui-overlay {
+      position: fixed;
+      z-index: 100;
+      pointer-events: none;
+    }
+    .ui-overlay > * {
+      pointer-events: auto;
+    }
+
+    /* Title */
+    .title-bar {
+      position: fixed;
+      top: 16px;
+      left: 20px;
+      z-index: 100;
+    }
+    .title-bar h1 {
+      font-size: 20px;
+      font-weight: 800;
+      letter-spacing: 4px;
+      background: linear-gradient(135deg, #7b68ee, #00d4aa);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+      margin-bottom: 4px;
+    }
+    .title-bar .subtitle {
+      font-size: 10px;
+      color: #4d5f73;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+    }
+    .title-bar .back-link {
+      display: inline-block;
+      margin-top: 8px;
+      font-size: 10px;
+      color: #6b7b8d;
+      text-decoration: none;
+      letter-spacing: 1px;
+      transition: color 0.2s;
+    }
+    .title-bar .back-link:hover {
+      color: #7b68ee;
+    }
+
+    /* View buttons */
+    .view-buttons {
+      position: fixed;
+      top: 16px;
+      right: 16px;
+      display: flex;
+      gap: 6px;
+      z-index: 100;
+    }
+    .view-btn {
+      background: rgba(19, 26, 43, 0.85);
+      border: 1px solid rgba(30, 45, 74, 0.6);
+      color: #c8d6e5;
+      padding: 6px 14px;
+      border-radius: 4px;
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 1.5px;
+      cursor: pointer;
+      text-transform: uppercase;
+      font-family: system-ui, -apple-system, sans-serif;
+      transition: all 0.2s ease;
+    }
+    .view-btn:hover {
+      border-color: rgba(123, 104, 238, 0.5);
+      box-shadow: 0 0 12px rgba(123, 104, 238, 0.2);
+    }
+    .view-btn.active {
+      border-color: currentColor;
+      box-shadow: 0 0 16px currentColor;
+      background: rgba(19, 26, 43, 0.95);
+    }
+    .view-btn[data-view="iam"] { color: #00d4aa; }
+    .view-btn[data-view="gdpr"] { color: #22d3ee; }
+    .view-btn[data-view="aml"] { color: #f97316; }
+
+    /* Info panel */
+    #info {
+      position: fixed;
+      bottom: 20px;
+      left: 20px;
+      background: rgba(10, 14, 23, 0.92);
+      border: 1px solid rgba(30, 45, 74, 0.6);
+      border-radius: 6px;
+      padding: 12px 16px;
+      min-width: 180px;
+      z-index: 100;
+      display: none;
+      backdrop-filter: blur(8px);
+    }
+
+    /* Help text */
+    .help-text {
+      position: fixed;
+      bottom: 16px;
+      right: 16px;
+      font-size: 9px;
+      color: #3d4f63;
+      letter-spacing: 0.5px;
+      text-align: right;
+      z-index: 100;
+      line-height: 1.6;
+    }
+
+    /* Experimental badge */
+    .badge {
+      position: fixed;
+      top: 16px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: rgba(255, 107, 107, 0.12);
+      border: 1px solid rgba(255, 107, 107, 0.25);
+      color: #ff6b6b;
+      font-size: 9px;
+      font-weight: 700;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      padding: 4px 12px;
+      border-radius: 3px;
+      z-index: 100;
+    }
+  </style>
+</head>
+<body>
+  <div id="scene"></div>
+
+  <div class="title-bar">
+    <h1>AREA42 3D</h1>
+    <div class="subtitle">Three.js Forest Experiment</div>
+    <a href="/" class="back-link">&larr; Back to Area42</a>
+  </div>
+
+  <div class="badge">EXPERIMENTAL</div>
+
+  <div class="view-buttons ui-overlay">
+    <button class="view-btn active" data-view="iam">IAM</button>
+    <button class="view-btn" data-view="gdpr">GDPR</button>
+    <button class="view-btn" data-view="aml">AML</button>
+  </div>
+
+  <div id="info"></div>
+
+  <div class="help-text">
+    Rotate: drag | Zoom: scroll | Pan: right-drag<br>
+    Click: select node | Double-click: collapse/expand<br>
+    Keys: 1 = IAM, 2 = GDPR, 3 = AML
+  </div>
+
+  <script type="module" src="/src/demo/forest3d.ts"></script>
+</body>
+</html>

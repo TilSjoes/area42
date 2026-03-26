@@ -79,7 +79,7 @@ export class Tree extends SceneNode {
   toggle(nodeId: string): void {
     if (!this.root) return;
     const node = this.findInData(this.root, nodeId);
-    if (node) {
+    if (node && node.children && node.children.length > 0) {
       node.collapsed = !node.collapsed;
       this.layoutRoot = this.buildLayout(this.root);
       this.calculateLayout();
@@ -300,12 +300,17 @@ export class Tree extends SceneNode {
   }
 
   private hitTest(node: LayoutNode, x: number, y: number): TreeNodeData | null {
-    for (let i = node.children.length - 1; i >= 0; i--) {
-      const found = this.hitTest(node.children[i], x, y);
-      if (found) return found;
+    // Check children first (front-to-back), but only if not collapsed
+    if (!node.collapsed) {
+      for (let i = node.children.length - 1; i >= 0; i--) {
+        const found = this.hitTest(node.children[i], x, y);
+        if (found) return found;
+      }
     }
-    if (x >= node.x && x <= node.x + node.width &&
-        y >= node.y && y <= node.y + node.height) {
+    // Collapsed nodes get a slightly larger hit area to stay clickable
+    const pad = node.collapsed ? 4 : 0;
+    if (x >= node.x - pad && x <= node.x + node.width + pad &&
+        y >= node.y - pad && y <= node.y + node.height + pad) {
       if (this.root) return this.findInData(this.root, node.id);
     }
     return null;
