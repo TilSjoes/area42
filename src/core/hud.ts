@@ -482,6 +482,23 @@ if (panel.minimized) {        if (panel.contains(point)) return panel;        co
           this.scene.root.add(panel);
           break;
         }
+        // Check collapse button
+        if (panel.isInCollapseButton && panel.isInCollapseButton(point)) {
+          panel.collapsed = !panel.collapsed;
+          return;
+        }
+        // Check minimize button
+        if (panel.isInMinimizeButton(point)) {
+          this.minimizePanel(panel);
+          return;
+        }
+        // Check close button
+        if (panel.isInCloseButton && panel.isInCloseButton(point)) {
+          if (panel.onCloseCallback) panel.onCloseCallback();
+          this.unregisterPanel(panel.id);
+          this.scene.root.remove(panel);
+          return;
+        }
         if (panel.isInHeader(point)) {
           this.dragTarget = panel;
           panel.startDrag(point);

@@ -266,16 +266,24 @@ export class Panel extends SceneNode {
     ctx.letterSpacing = titleLetterSpacing;
     ctx.fillText(this.title.toUpperCase(), x + (this.compact ? 8 : 12), y + this.headerHeight / 2);
 
-    // Minimize button (before close button)
+    // Panel control buttons (right side of header)
     if (this.closable) {
-      // Minimize button
       ctx.fillStyle = "rgba(255,255,255,0.3)";
       ctx.font = this.compact ? "10px system-ui" : "12px system-ui";
-      ctx.textAlign = "right";
-      ctx.fillText("\u2013", x + w - 26, y + this.headerHeight / 2);
+      ctx.textAlign = "center";
 
-      // Close button
-      ctx.fillText("\u00d7", x + w - 10, y + this.headerHeight / 2);
+      // Collapse/expand button (triangle)
+      const colX = x + w - 42;
+      ctx.fillText(this.collapsed ? "\u25BC" : "\u25B2", colX, y + this.headerHeight / 2);
+
+      // Minimize button (en-dash)
+      const minX = x + w - 26;
+      ctx.fillText("\u2013", minX, y + this.headerHeight / 2);
+
+      // Close button (×)
+      const clsX = x + w - 10;
+      ctx.fillText("\u00d7", clsX, y + this.headerHeight / 2);
+
       ctx.textAlign = "left";
     }
 
@@ -409,6 +417,26 @@ export class Panel extends SceneNode {
     const wp = this.worldPosition();
     return point.x >= wp.x && point.x <= wp.x + this.size.x &&
            point.y >= wp.y && point.y <= wp.y + this.headerHeight;
+  }
+
+  /** Check if a point hits the collapse button */
+  isInCollapseButton(point: Vec2): boolean {
+    if (this.minimized || !this.closable) return false;
+    const wp = this.worldPosition();
+    const btnX = wp.x + this.size.x - 50;
+    const btnY = wp.y;
+    return point.x >= btnX && point.x <= btnX + 16 &&
+           point.y >= btnY && point.y <= btnY + this.headerHeight;
+  }
+
+  /** Check if a point hits the close button */
+  isInCloseButton(point: Vec2): boolean {
+    if (this.minimized || !this.closable) return false;
+    const wp = this.worldPosition();
+    const btnX = wp.x + this.size.x - 18;
+    const btnY = wp.y;
+    return point.x >= btnX && point.x <= btnX + 16 &&
+           point.y >= btnY && point.y <= btnY + this.headerHeight;
   }
 
   /** Check if a point hits the minimize button */

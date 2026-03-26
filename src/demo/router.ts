@@ -614,14 +614,16 @@ function simulateEvent(): void {
     graph.pulse("backend-" + backend, backendColors[backend]);
   }, 450);
 
-  // Show toast notification for routing event
-  const toastType = event.status === "OK" ? (tier === "complex" ? "warning" as const : "info" as const) : "error" as const;
-  toasts.show({
-    message: "Routed " + source + " to " + backend + " via Spine [" + tier + "]",
-    type: toastType,
-    duration: 2500,
-    position: "bottom-right",
-  });
+  // Show toast only for complex/error events (reduce spam)
+  if (tier === "complex" || event.status !== "OK") {
+    const toastType = event.status !== "OK" ? "error" as const : "warning" as const;
+    toasts.show({
+      message: "Routed " + source + " to " + backend + " [" + tier + "]",
+      type: toastType,
+      duration: 1500,
+      position: "bottom-right",
+    });
+  }
 }
 
 function scheduleNext(): void {

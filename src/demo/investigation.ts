@@ -797,6 +797,26 @@ timelinePanel.onContent((ctx, x, y, w, h) => {
 });
 
 // ============================================================================
+// REPLAY CLICK HANDLER
+const canvas = hud.renderer['canvas'] as HTMLCanvasElement;
+canvas.addEventListener('click', (e: MouseEvent) => {
+  const rect = canvas.parentElement!.getBoundingClientRect();
+  const mx = e.clientX - rect.left;
+  const my = e.clientY - rect.top;
+  // Check if click is on the replay button area (bottom-right of timelinePanel)
+  const tp = timelinePanel.worldPosition();
+  const bx = tp.x + timelinePanel.size.x - 60;
+  const by = tp.y + (timelinePanel.collapsed ? 28 : timelinePanel.size.y) - 14;
+  if (mx >= bx && mx <= bx + 56 && my >= by && my <= by + 14 && timelinePanel.visible && !timelinePanel.collapsed) {
+    txReplayActive = !txReplayActive;
+    if (txReplayActive) {
+      txTimeline.startReplay();
+    } else {
+      txTimeline.stopReplay();
+    }
+  }
+});
+
 // COMMAND PALETTE (with export)
 // ============================================================================
 
