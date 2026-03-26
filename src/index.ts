@@ -58,4 +58,32 @@ export { DetailPanel } from "./panels/detail.js";
 export { ContextMenu } from "./panels/contextmenu.js";export type { MenuItem } from "./panels/contextmenu.js";export { HelpOverlay } from "./panels/helpoverlay.js";
 export type { NodeDetail, DetailSection, DetailField } from "./panels/detail.js";
 
+// Status Bar
+export { StatusBar } from "./panels/statusbar.js";
+export type { StatusItem } from "./panels/statusbar.js";
+
+// Breadcrumb
+export { Breadcrumb } from "./panels/breadcrumb.js";
+export type { BreadcrumbItem } from "./panels/breadcrumb.js";
+
+// Command Palette
+export { CommandPalette } from "./panels/command.js";
+export type { CommandItem } from "./panels/command.js";
+
 export { withAlpha } from "./core/color.js";
+
+// Gauge
+export { Gauge } from "./charts/gauge.js";
+export type { GaugeOptions } from "./charts/gauge.js";
+
+// Heatmap
+export { Heatmap } from "./charts/heatmap.js";
+export type { HeatmapOptions } from "./charts/heatmap.js";
+
+// Tree
+export { Tree } from "./graph/tree.js";
+export type { TreeNodeData, TreeOptions } from "./graph/tree.js";
+
+// Toast
+export { ToastManager } from "./panels/toast.js";
+export type { ToastOptions } from "./panels/toast.js";

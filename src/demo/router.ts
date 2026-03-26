@@ -610,4 +610,21 @@ console.log(
 );
 console.log("  AI model routing visualization with live particle flow");
 console.log("  Sources -> Spine classifier -> Tier -> Backend");
+// --- Status Bar ---
+hud.statusBar.set('brand', 'Area42 v0.1.0', { position: 'left', color: '#00d4aa' });
+hud.statusBar.set('stats', 'Nodes: ' + graph.getNodes().length + ' | Edges: ' + graph.getEdges().length + ' | FPS: 60', { position: 'right' });
+
+let routerFrameCount = 0;
+let routerLastFpsTime = performance.now();
+hud.renderer.onRender((rc) => {
+  routerFrameCount++;
+  const now = performance.now();
+  if (now - routerLastFpsTime >= 1000) {
+    const fps = Math.round(routerFrameCount * 1000 / (now - routerLastFpsTime));
+    hud.statusBar.set('stats', 'Nodes: ' + graph.getNodes().length + ' | Edges: ' + graph.getEdges().length + ' | FPS: ' + fps, { position: 'right' });
+    routerFrameCount = 0;
+    routerLastFpsTime = now;
+  }
+});
+
 console.log("  Drag panels by title bars. Resize from corners. Press ? for help.");

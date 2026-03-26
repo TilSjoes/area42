@@ -877,6 +877,45 @@ function handleEdgeClick(edge: GraphEdge, point: { x: number; y: number }) {
   detailPanelOrder.push(panelId);
 }
 
+// --- Status Bar ---
+hud.statusBar.set('brand', 'Area42 v0.1.0', { position: 'left', color: '#00d4aa' });
+hud.statusBar.set('stats', 'Nodes: 7 | Edges: 12 | FPS: 60', { position: 'right' });
+
+// Track FPS for status bar
+let frameCount = 0;
+let lastFpsTime = performance.now();
+const origOnRender = hud.renderer.onRender.bind(hud.renderer);
+hud.renderer.onRender((rc) => {
+  frameCount++;
+  const now = performance.now();
+  if (now - lastFpsTime >= 1000) {
+    const fps = Math.round(frameCount * 1000 / (now - lastFpsTime));
+    const nodeCount = graph.getNodes().length;
+    const edgeCount = graph.getEdges().length;
+    hud.statusBar.set('stats', 'Nodes: ' + nodeCount + ' | Edges: ' + edgeCount + ' | FPS: ' + fps, { position: 'right' });
+    frameCount = 0;
+    lastFpsTime = now;
+  }
+});
+
+// --- Command Palette ---
+hud.commandPalette.register([
+  { id: 'focus-spine', label: 'Focus Spine', category: 'Node', action: () => { graph.pulse('spine', '#f97316'); } },
+  { id: 'focus-moe', label: 'Focus MoE', category: 'Node', action: () => { graph.pulse('moe', '#22d3ee'); } },
+  { id: 'focus-dense', label: 'Focus Dense', category: 'Node', action: () => { graph.pulse('dense', '#4dabf7'); } },
+  { id: 'focus-claude', label: 'Focus Claude', category: 'Node', action: () => { graph.pulse('claude', '#f97316'); } },
+  { id: 'focus-gpt52', label: 'Focus GPT-5.2', category: 'Node', action: () => { graph.pulse('gpt52', '#ffd43b'); } },
+  { id: 'focus-nats', label: 'Focus NATS', category: 'Node', action: () => { graph.pulse('nats', '#ffd43b'); } },
+  { id: 'focus-agentsmith', label: 'Focus AgentSmith', category: 'Node', action: () => { graph.pulse('agentsmith', '#a78bfa'); } },
+  { id: 'toggle-physics', label: 'Toggle Physics', category: 'View', description: 'Space', action: () => { graph.toggleSimulation(); } },
+  { id: 'fit-view', label: 'Fit to View', category: 'View', description: 'F', action: () => { graph.fitToView(); } },
+  { id: 'reset-layout', label: 'Reset Layout', category: 'View', description: 'R', action: () => { graph.resetPositions(); } },
+  { id: 'demo-investigation', label: 'Investigation Demo', category: 'Demo', action: () => { window.location.href = '/investigation.html'; } },
+  { id: 'demo-governance', label: 'Governance Demo', category: 'Demo', action: () => { window.location.href = '/governance.html'; } },
+  { id: 'demo-router', label: 'Router Demo', category: 'Demo', action: () => { window.location.href = '/router.html'; } },
+  { id: 'demo-timeline', label: 'Timeline Demo', category: 'Demo', action: () => { window.location.href = '/timeline.html'; } },
+]);
+
 // Export for HUD double-click handler and edge clicks
 (window as any).__area42 = {
   graph,

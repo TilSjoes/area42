@@ -11,6 +11,7 @@
 import { Swimlane } from "../charts/swimlane.js";
 import type { SwimlaneGroup, SwimlaneEvent } from "../charts/swimlane.js";
 import { NeonTheme } from "../themes/neon.js";
+import { StatusBar } from "../panels/statusbar.js";
 
 // ============================================================================
 // SETUP
@@ -255,6 +256,17 @@ document.addEventListener("keydown", (e) => {
 });
 
 // ============================================================================
+// STATUS BAR
+// ============================================================================
+
+const statusBar = new StatusBar();
+statusBar.set('brand', 'Area42 v0.1.0', { position: 'left', color: '#00d4aa' });
+// stats set below after totalEvents is computed
+
+let tlFrameCount = 0;
+let tlLastFpsTime = performance.now();
+
+// ============================================================================
 // RENDER LOOP
 // ============================================================================
 
@@ -278,6 +290,20 @@ function frame(): void {
   ctx.fillText("Scroll: zoom | Drag: pan | F: fit all | T: today | W: week", w - 12, h - 44);
   ctx.restore();
 
+  // Status bar at bottom
+  const statusBarH = statusBar.getHeight();
+  statusBar.render(ctx, h - statusBarH, w);
+
+  // FPS tracking
+  tlFrameCount++;
+  const fpsNow = performance.now();
+  if (fpsNow - tlLastFpsTime >= 1000) {
+    const fps = Math.round(tlFrameCount * 1000 / (fpsNow - tlLastFpsTime));
+    statusBar.set('stats', 'Events: ' + totalEvents + ' | FPS: ' + fps, { position: 'right' });
+    tlFrameCount = 0;
+    tlLastFpsTime = fpsNow;
+  }
+
   requestAnimationFrame(frame);
 }
 
@@ -289,6 +315,7 @@ frame();
 
 let totalEvents = 0;
 for (const g of groups) for (const l of g.lanes) totalEvents += l.events.length;
+statusBar.set('stats', 'Events: ' + totalEvents + ' | FPS: 60', { position: 'right' });
 
 console.log(
   "%c Area42 %c Swimlane Timeline ",

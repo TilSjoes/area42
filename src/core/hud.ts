@@ -14,6 +14,10 @@ import { Theme, NeonTheme } from "../themes/neon.js";
 import { ContextMenu } from "../panels/contextmenu.js";
 import type { MenuItem } from "../panels/contextmenu.js";
 import { HelpOverlay } from "../panels/helpoverlay.js";
+import { StatusBar } from "../panels/statusbar.js";
+import type { StatusItem } from "../panels/statusbar.js";
+import { CommandPalette } from "../panels/command.js";
+import type { CommandItem } from "../panels/command.js";
 
 export interface HUDOptions {
   theme?: Theme | "neon" | "glass";
@@ -62,6 +66,10 @@ export class HUD {
   // Context menu and help overlay
   private contextMenu: ContextMenu = new ContextMenu();
   private helpOverlay: HelpOverlay = new HelpOverlay();
+
+  // Status bar and command palette
+  private _statusBar: StatusBar = new StatusBar();
+  private _commandPalette: CommandPalette = new CommandPalette();
 
   // Graph panning state
   private isPanning = false;
@@ -117,8 +125,15 @@ export class HUD {
       // Render scene
       this.scene.render(rc.ctx);
 
+      // Render status bar at bottom
+      const statusBarH = this._statusBar.getHeight();
+      this._statusBar.render(rc.ctx, rc.height - statusBarH, rc.width);
+
       // Render context menu (above everything)
       this.contextMenu.render(rc.ctx);
+
+      // Render command palette (above help)
+      this._commandPalette.render(rc.ctx, rc.width, rc.height);
 
       // Render help overlay (topmost)
       this.helpOverlay.render(rc.ctx, rc.width, rc.height);
@@ -130,6 +145,12 @@ export class HUD {
     // Start
     this.renderer.start();
   }
+
+  /** Get the status bar instance */
+  get statusBar(): StatusBar { return this._statusBar; }
+
+  /** Get the command palette instance */
+  get commandPalette(): CommandPalette { return this._commandPalette; }
 
   /** Create a floating glass panel */
   panel(options: PanelOptions): Panel {
@@ -299,6 +320,18 @@ if (panel.minimized) {        if (panel.contains(point)) return panel;        co
 
     canvas.addEventListener("mousedown", (e) => {
       const point = this.canvasPoint(e);
+
+      // Status bar click handling
+      const statusBarY = this.renderer.height - this._statusBar.getHeight();
+      if (point.y >= statusBarY) {
+        this._statusBar.handleClick(point.x);
+        return;
+      }
+
+      // Command palette blocks clicks when visible
+      if (this._commandPalette.isVisible()) {
+        return;
+      }
 
       // Context menu click handling (takes priority)
       if (this.contextMenu.isVisible()) {
@@ -726,6 +759,12 @@ child.showTooltip(hitNode, point.x, point.y);
   /** Handle keyboard shortcuts */
   private handleKeyDown(e: KeyboardEvent): void {
     const key = e.key;
+
+    // Command palette takes priority
+    if (this._commandPalette.handleKey(key, e.ctrlKey, e.metaKey)) {
+      e.preventDefault();
+      return;
+    }
 
     if (key === "Escape") {
       if (this.contextMenu.isVisible()) { this.contextMenu.hide(); return; }

@@ -324,6 +324,28 @@ scanStatus.onContent((ctx, x, y, w, h) => {
   ctx.fillText("● 04:00 AM • 9 projects", x, y + 4);
 });
 
+// --- Status Bar ---
+hud.statusBar.set('brand', 'Area42 v0.1.0', { position: 'left', color: '#00d4aa' });
+hud.statusBar.set('stats', 'Panels: 4 | FPS: 60', { position: 'right' });
+
+let govFrameCount = 0;
+let govLastFpsTime = performance.now();
+hud.renderer.onRender((rc) => {
+  govFrameCount++;
+  const now = performance.now();
+  if (now - govLastFpsTime >= 1000) {
+    const fps = Math.round(govFrameCount * 1000 / (now - govLastFpsTime));
+    hud.statusBar.set('stats', 'Panels: 4 | FPS: ' + fps, { position: 'right' });
+    govFrameCount = 0;
+    govLastFpsTime = now;
+  }
+});
+
+// Trust trend live update
+setInterval(() => {
+  trustTrend.push(75 + Math.random() * 10 + 6);
+}, 2000);
+
 console.log(
   "%c Area42 %c Governance Dashboard Demo ",
   "background:#0a0e17;color:#00d4aa;font-weight:bold;padding:4px 8px;border-radius:4px 0 0 4px",

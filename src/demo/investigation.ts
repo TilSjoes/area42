@@ -17,6 +17,8 @@ import { Table } from "../panels/table.js";
 import { MetricDisplay } from "../panels/metric.js";
 import { MiniGraph } from "../panels/minigraph.js";
 import { withAlpha } from "../core/color.js";
+import { Breadcrumb } from "../panels/breadcrumb.js";
+import type { BreadcrumbItem } from "../panels/breadcrumb.js";
 
 // --- Universe mode: full space background ---
 const hud = new HUD("#hud", {
@@ -139,6 +141,9 @@ customers.forEach((c, i) => {
 
 // Register dynamic expand callback for drill-down
 graph.onExpand((nodeId: string, node: GN) => {
+  // Update breadcrumb trail on expand
+  if (typeof updateBreadcrumb === 'function') updateBreadcrumb(nodeId);
+
   // Customer -> show accounts
   if (nodeId.startsWith("cust-")) {
     const custAccounts = accounts.filter(a => a.customerId === nodeId);
@@ -510,6 +515,153 @@ legendPanel.onContent((ctx, x, y, w, h) => {
     ctx.fillText(item.label, x + 18, iy + 9);
   });
 });
+
+// ============================================================================
+// STATUS BAR
+// ============================================================================
+
+hud.statusBar.set('brand', 'Area42 v0.1.0', { position: 'left', color: '#00d4aa' });
+hud.statusBar.set('stats', 'Nodes: ' + customers.length + ' | Edges: 0 | FPS: 60', { position: 'right' });
+
+let invFrameCount = 0;
+let invLastFpsTime = performance.now();
+hud.renderer.onRender((rc) => {
+  invFrameCount++;
+  const now = performance.now();
+  if (now - invLastFpsTime >= 1000) {
+    const fps = Math.round(invFrameCount * 1000 / (now - invLastFpsTime));
+    const nodeCount = graph.getNodes().length;
+    const edgeCount = graph.getEdges().length;
+    hud.statusBar.set('stats', 'Nodes: ' + nodeCount + ' | Edges: ' + edgeCount + ' | FPS: ' + fps, { position: 'right' });
+    invFrameCount = 0;
+    invLastFpsTime = now;
+  }
+});
+
+// ============================================================================
+// BREADCRUMB TRAIL
+// ============================================================================
+
+const breadcrumb = new Breadcrumb();
+
+// Breadcrumb panel at top of screen
+const breadcrumbPanel = hud.panel({
+  title: '',
+  position: { x: 20, y: hud.renderer.height - 70 },
+  size: { x: 500, y: 30 },
+  glass: true,
+  compact: true,
+  closable: false,
+});
+
+breadcrumbPanel.onContent((ctx, x, y, w, h) => {
+  breadcrumb.render(ctx, x, y, w);
+});
+
+// Update breadcrumbs when nodes are expanded
+function updateBreadcrumb(nodeId: string): void {
+  const node = graph.getNode(nodeId);
+  if (!node) return;
+
+  const trail: BreadcrumbItem[] = [];
+
+  // Root level
+  trail.push({
+    label: 'Kunder',
+    id: 'root',
+    color: '#4dabf7',
+    onClick: () => {
+      // Collapse everything
+      for (const c of customers) {
+        if (expandedNodes.has(c.id)) {
+          graph.collapse(c.id);
+          expandedNodes.delete(c.id);
+        }
+      }
+      breadcrumb.set([{ label: 'Kunder', id: 'root', color: '#4dabf7' }]);
+    },
+  });
+
+  // Customer level
+  if (nodeId.startsWith('cust-')) {
+    const c = customers.find(cu => cu.id === nodeId);
+    if (c) {
+      trail.push({
+        label: c.name,
+        id: c.id,
+        color: c.color,
+        onClick: () => {
+          // Collapse accounts under this customer
+          const custAccs = accounts.filter(a => a.customerId === c.id);
+          for (const a of custAccs) {
+            if (expandedNodes.has(a.id)) {
+              graph.collapse(a.id);
+              expandedNodes.delete(a.id);
+            }
+          }
+          breadcrumb.set(trail.slice(0, 2));
+        },
+      });
+    }
+  }
+
+  // Account level
+  if (nodeId.startsWith('acc-')) {
+    const a = accounts.find(ac => ac.id === nodeId);
+    if (a) {
+      const c = customers.find(cu => cu.id === a.customerId);
+      if (c) {
+        trail.push({
+          label: c.name,
+          id: c.id,
+          color: c.color,
+          onClick: () => {
+            if (expandedNodes.has(a.id)) {
+              graph.collapse(a.id);
+              expandedNodes.delete(a.id);
+            }
+            breadcrumb.set(trail.slice(0, 2));
+          },
+        });
+      }
+      trail.push({
+        label: 'Konto ' + a.number.split('.')[0],
+        id: a.id,
+        color: c?.color ?? '#4dabf7',
+      });
+    }
+  }
+
+  // Transaction level
+  if (nodeId.startsWith('tx-')) {
+    const t = transactions.find(tx => tx.id === nodeId);
+    if (t) {
+      const a = accounts.find(ac => ac.id === t.accountId);
+      const c = a ? customers.find(cu => cu.id === a.customerId) : null;
+      if (c) {
+        trail.push({ label: c.name, id: c.id, color: c.color });
+      }
+      if (a) {
+        trail.push({ label: 'Konto ' + a.number.split('.')[0], id: a.id, color: c?.color ?? '#4dabf7' });
+      }
+      trail.push({ label: 'Transaksjon ' + t.id.replace('tx-', '#'), id: t.id, color: t.status === 'cleared' ? '#51cf66' : t.status === 'review' ? '#ffd43b' : '#ff6b6b' });
+    }
+  }
+
+  breadcrumb.set(trail);
+}
+
+
+// Also update breadcrumb on node click
+const origOnNodeClick = (window as any).__area42?.onNodeClick;
+const area42Ref = (window as any).__area42;
+if (area42Ref) {
+  const origClick = area42Ref.onNodeClick;
+  area42Ref.onNodeClick = (node: any) => {
+    updateBreadcrumb(node.id);
+    if (origClick) origClick(node);
+  };
+}
 
 // ============================================================================
 // SIMULATE LIVE ACTIVITY
