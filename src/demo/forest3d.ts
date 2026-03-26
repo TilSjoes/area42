@@ -509,6 +509,7 @@ function buildTree(tree: ForestTree, treeIndex: number): THREE.Group {
   const group = new THREE.Group();
   const offsetX = (treeIndex - 1) * TREE_SPACING;
   group.position.x = offsetX;
+  group.rotation.y = Math.PI / 2;  // face along the tree line
 
   applyCollapsedState(tree.root);
 
