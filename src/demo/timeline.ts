@@ -1,440 +1,300 @@
 /**
- * Area42 Timeline Demo
+ * Area42 Swimlane Timeline Demo
  *
- * An Area42-native timeline visualization — a modern activity stream
- * showing project activity over time with sparklines, workflow graphs,
- * and a chronological event table.
+ * Full-screen Gantt-style swimlane visualization showing 90 days of
+ * simulated DONTPANIC infrastructure activity: git commits, missions,
+ * worker tasks, and babelfish dreams.
  *
- * Embedded mode with dark gradient.
+ * Standalone canvas mode with direct rendering loop.
  */
-import { HUD } from "../core/hud.js";
-import { MetricDisplay } from "../panels/metric.js";
-import { TimeSeries } from "../charts/timeseries.js";
-import { Table } from "../panels/table.js";
-import { MiniGraph } from "../panels/minigraph.js";
-import { withAlpha } from "../core/color.js";
 
-// --- Embedded mode ---
-const hud = new HUD("#hud", {
-  theme: "neon",
-  background: false,
-});
+import { Swimlane } from "../charts/swimlane.js";
+import type { SwimlaneGroup, SwimlaneEvent } from "../charts/swimlane.js";
+import { NeonTheme } from "../themes/neon.js";
+
+// ============================================================================
+// SETUP
+// ============================================================================
 
 const container = document.getElementById("hud")!;
-container.style.background = "linear-gradient(160deg, #0a0e17 0%, #101829 40%, #0d1220 100%)";
+container.style.background = NeonTheme.bg;
 
-const W = hud.renderer.width;
-const H = hud.renderer.height;
+const canvas = document.createElement("canvas");
+canvas.style.width = "100%";
+canvas.style.height = "100%";
+canvas.style.display = "block";
+container.appendChild(canvas);
+
+function resize(): void {
+  const dpr = window.devicePixelRatio || 1;
+  canvas.width = window.innerWidth * dpr;
+  canvas.height = window.innerHeight * dpr;
+}
+resize();
+window.addEventListener("resize", resize);
+
+const ctx = canvas.getContext("2d")!;
 
 // ============================================================================
-// PROJECT DATA (simulated 90-day history)
+// DATA GENERATION — 90 days of simulated activity
 // ============================================================================
 
-interface Project {
-  name: string;
-  color: string;
-  events: number;
-  commits: number;
-  velocity: number;
-  activityData: number[];
-  workflowStatuses: Record<string, "pending" | "running" | "completed" | "failed">;
+const NOW = Date.now();
+const DAY = 86400000;
+const HOUR = 3600000;
+const ORIGIN = NOW - 90 * DAY;
+
+// Deterministic-ish seeded random
+let seed = 42;
+function rand(): number {
+  seed = (seed * 1664525 + 1013904223) & 0x7fffffff;
+  return seed / 0x7fffffff;
 }
 
-interface ActivityEvent {
-  time: string;
-  date: string;
-  project: string;
-  type: string;
-  description: string;
-  color: string;
+function randInt(min: number, max: number): number {
+  return Math.floor(rand() * (max - min + 1)) + min;
 }
 
-// Generate realistic 90-day activity data with bursts and quiet periods
-function genActivity(baseLevel: number, burstChance: number): number[] {
-  const data: number[] = [];
-  let inBurst = false;
-  let burstDays = 0;
-  for (let i = 0; i < 90; i++) {
-    if (!inBurst && Math.random() < burstChance) {
-      inBurst = true;
-      burstDays = 3 + Math.floor(Math.random() * 7);
-    }
-    if (inBurst) {
-      data.push(baseLevel * (2 + Math.random() * 3));
-      burstDays--;
-      if (burstDays <= 0) inBurst = false;
-    } else {
-      // Quiet period: some days zero, some low
-      data.push(Math.random() < 0.3 ? 0 : baseLevel * Math.random());
+/** Generate commit dots clustered on weekdays with burst patterns */
+function genCommits(projectColor: string, density: number): SwimlaneEvent[] {
+  const events: SwimlaneEvent[] = [];
+  for (let day = 0; day < 90; day++) {
+    const date = new Date(ORIGIN + day * DAY);
+    const dow = date.getDay();
+    // Skip most weekends
+    if ((dow === 0 || dow === 6) && rand() > 0.15) continue;
+
+    // Burst periods: ~20% of weekdays have 3-8 commits
+    const isBurst = rand() < 0.18;
+    const commitCount = isBurst ? randInt(3, 8) : (rand() < density ? randInt(1, 3) : 0);
+
+    for (let c = 0; c < commitCount; c++) {
+      const hour = randInt(8, 22);
+      const minute = randInt(0, 59);
+      events.push({
+        start: ORIGIN + day * DAY + hour * HOUR + minute * 60000,
+        shape: "dot",
+        color: projectColor,
+      });
     }
   }
-  return data;
+  return events;
 }
 
-const projects: Project[] = [
-  {
-    name: "BoringBank",
-    color: "#4dabf7",
-    events: 342,
-    commits: 186,
-    velocity: 4.2,
-    activityData: genActivity(5, 0.12),
-    workflowStatuses: { plan: "completed", code: "completed", review: "completed", deploy: "completed" },
-  },
-  {
-    name: "AgentSmith",
-    color: "#f97316",
-    events: 521,
-    commits: 298,
-    velocity: 6.1,
-    activityData: genActivity(7, 0.15),
-    workflowStatuses: { plan: "completed", code: "running", review: "pending", deploy: "pending" },
-  },
-  {
-    name: "Marvin",
-    color: "#a78bfa",
-    events: 284,
-    commits: 157,
-    velocity: 3.8,
-    activityData: genActivity(4, 0.1),
-    workflowStatuses: { plan: "completed", code: "completed", review: "running", deploy: "pending" },
-  },
-  {
-    name: "Suits",
-    color: "#51cf66",
-    events: 198,
-    commits: 112,
-    velocity: 2.4,
-    activityData: genActivity(3, 0.08),
-    workflowStatuses: { plan: "completed", code: "completed", review: "completed", deploy: "running" },
-  },
-  {
-    name: "Area42",
-    color: "#22d3ee",
-    events: 89,
-    commits: 47,
-    velocity: 5.3,
-    activityData: genActivity(6, 0.2),
-    workflowStatuses: { plan: "completed", code: "running", review: "pending", deploy: "pending" },
-  },
-  {
-    name: "Vale",
-    color: "#ffd43b",
-    events: 156,
-    commits: 84,
-    velocity: 1.9,
-    activityData: genActivity(2, 0.06),
-    workflowStatuses: { plan: "completed", code: "completed", review: "completed", deploy: "completed" },
-  },
-];
-
-// Pre-build TimeSeries and MiniGraphs for each project
-const projectSeries: Map<string, TimeSeries> = new Map();
-const projectWorkflows: Map<string, MiniGraph> = new Map();
-
-for (const p of projects) {
-  const ts = new TimeSeries({ color: p.color, maxPoints: 90, lineWidth: 1.5 });
-  for (const val of p.activityData) {
-    ts.push(val);
-  }
-  projectSeries.set(p.name, ts);
-
-  const mg = new MiniGraph(
-    [
-      { id: "plan", label: "Plan", status: p.workflowStatuses.plan },
-      { id: "code", label: "Code", status: p.workflowStatuses.code },
-      { id: "review", label: "Review", status: p.workflowStatuses.review },
-      { id: "deploy", label: "Deploy", status: p.workflowStatuses.deploy },
-    ],
-    [
-      { from: "plan", to: "code" },
-      { from: "code", to: "review" },
-      { from: "review", to: "deploy" },
-    ],
-  );
-  projectWorkflows.set(p.name, mg);
-}
-
-// Activity events for the stream
-const eventTypes = ["commit", "mission", "dream", "worker", "deploy", "review"];
-const typeColors: Record<string, string> = {
-  commit: "#51cf66",
-  mission: "#4dabf7",
-  dream: "#a78bfa",
-  worker: "#f97316",
-  deploy: "#22d3ee",
-  review: "#ffd43b",
-};
-
-const commitMessages = [
-  "Fix auth middleware for bank routes",
-  "Add semantic search to memory system",
-  "Refactor spine classifier training loop",
-  "Update dashboard SSE event handling",
-  "Implement cost savings aggregation",
-  "Add OWASP compliance scanning",
-  "Fix NATS JetStream reconnection",
-  "Optimize MoE slot allocation",
-  "Add voice pipeline error recovery",
-  "Update Tailwind config for dark mode",
-  "Implement graph zoom-to-fit",
-  "Fix particle system memory leak",
-  "Add Norwegian localization strings",
-  "Refactor TimeSeries chart rendering",
-  "Deploy governance agent updates",
-];
-
-const missionDescs = [
-  "Phoenix Build 4 planning",
-  "Security audit for Suits",
-  "Investigate routing latency",
-  "Implement Babelfish dreaming",
-  "Optimize VRAM allocation",
-];
-
-const activityEvents: ActivityEvent[] = [];
-
-function generateEvents(): void {
-  const now = Date.now();
-  for (let i = 0; i < 50; i++) {
-    const ago = Math.random() * 86400000 * 3; // last 3 days
-    const d = new Date(now - ago);
-    const project = projects[Math.floor(Math.random() * projects.length)];
-    const type = eventTypes[Math.floor(Math.random() * eventTypes.length)];
-    let desc = "";
-    if (type === "commit") desc = commitMessages[Math.floor(Math.random() * commitMessages.length)];
-    else if (type === "mission") desc = missionDescs[Math.floor(Math.random() * missionDescs.length)];
-    else if (type === "dream") desc = "Babelfish nightly introspection cycle";
-    else if (type === "worker") desc = ["Arthur", "Trillian", "Mac"][Math.floor(Math.random() * 3)] + " worker dispatched";
-    else if (type === "deploy") desc = "Deployed to " + (Math.random() > 0.5 ? "production" : "staging");
-    else desc = "Code review " + (Math.random() > 0.5 ? "approved" : "requested changes");
-
-    activityEvents.push({
-      time: d.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" }),
-      date: d.toLocaleDateString("en-GB", { day: "2-digit", month: "short" }),
-      project: project.name,
-      type,
-      description: desc,
-      color: project.color,
+/** Generate mission rectangles spanning minutes to hours */
+function genMissions(projectColor: string, count: number): SwimlaneEvent[] {
+  const events: SwimlaneEvent[] = [];
+  const missionNames = [
+    "Phoenix Build", "Security Audit", "Perf Optimization", "Feature Sprint",
+    "Bug Triage", "Refactor Core", "Deploy Pipeline", "Data Migration",
+    "API Redesign", "Test Coverage", "Doc Update", "Infra Scaling",
+  ];
+  for (let i = 0; i < count; i++) {
+    const day = randInt(0, 89);
+    const hour = randInt(9, 18);
+    const durationMin = randInt(15, 240);
+    const start = ORIGIN + day * DAY + hour * HOUR;
+    events.push({
+      start,
+      end: start + durationMin * 60000,
+      label: missionNames[randInt(0, missionNames.length - 1)],
+      shape: "rect",
+      color: projectColor,
+      data: { type: "mission", id: "M-" + randInt(1000, 9999) },
     });
   }
-  activityEvents.sort((a, b) => {
-    // newest first (approximate)
-    return 0;
-  });
+  return events;
 }
-generateEvents();
 
-// ============================================================================
-// STATS HEADER
-// ============================================================================
-
-const statsPanel = hud.panel({
-  title: "Activity Overview",
-  position: { x: 20, y: 15 },
-  size: { x: W - 40, y: 90 },
-  glass: false,
-  titleColor: "#22d3ee",
-});
-
-const totalEvents = projects.reduce((s, p) => s + p.events, 0);
-const totalCommits = projects.reduce((s, p) => s + p.commits, 0);
-
-const headerMetrics = new MetricDisplay({ columns: 4, valueSize: 22, labelSize: 8 });
-headerMetrics.set("Total Events", String(totalEvents), "#22d3ee");
-headerMetrics.set("Date Range", "90 days", "#c8d6e5");
-headerMetrics.set("Active Projects", String(projects.length), "#51cf66");
-headerMetrics.set("Total Commits", String(totalCommits), "#a78bfa");
-
-statsPanel.onContent((ctx, x, y, w, h) => {
-  headerMetrics.render(ctx, x, y, w, h);
-});
-
-// ============================================================================
-// PROJECT CARDS (2 columns)
-// ============================================================================
-
-const cardStartY = 115;
-const cardGap = 12;
-const cols = 2;
-const cardW = Math.floor((W - 40 - cardGap) / cols);
-const cardH = Math.floor((H * 0.48) / Math.ceil(projects.length / cols));
-
-projects.forEach((p, i) => {
-  const col = i % cols;
-  const row = Math.floor(i / cols);
-  const px = 20 + col * (cardW + cardGap);
-  const py = cardStartY + row * (cardH + cardGap);
-
-  const panel = hud.panel({
-    title: p.name,
-    position: { x: px, y: py },
-    size: { x: cardW, y: cardH },
-    glass: false,
-    titleColor: p.color,
-  });
-
-  const ts = projectSeries.get(p.name)!;
-  const mg = projectWorkflows.get(p.name)!;
-
-  panel.onContent((ctx, x, y, w, h) => {
-    // Stats row at top
-    ctx.fillStyle = "#6b7b8d";
-    ctx.font = "9px system-ui";
-    ctx.fillText("EVENTS", x, y + 8);
-    ctx.fillText("COMMITS", x + w * 0.33, y + 8);
-    ctx.fillText("VELOCITY", x + w * 0.66, y + 8);
-
-    ctx.fillStyle = p.color;
-    ctx.font = "bold 14px system-ui";
-    ctx.fillText(String(p.events), x, y + 24);
-    ctx.fillText(String(p.commits), x + w * 0.33, y + 24);
-    ctx.fillText(p.velocity.toFixed(1) + "/d", x + w * 0.66, y + 24);
-
-    // Activity sparkline (90-day)
-    const sparkY = y + 34;
-    const sparkH = Math.max(20, h * 0.28);
-    ts.render(ctx, x, sparkY, w, sparkH);
-
-    // Label for sparkline
-    ctx.fillStyle = "#6b7b8d";
-    ctx.font = "8px system-ui";
-    ctx.fillText("90-DAY ACTIVITY", x, sparkY + sparkH + 10);
-
-    // Mini workflow graph
-    const mgY = sparkY + sparkH + 16;
-    const mgH = Math.max(30, h - (mgY - y) - 4);
-    if (mgH > 20) {
-      mg.render(ctx, x, mgY, w, mgH);
-    }
-  });
-});
-
-// ============================================================================
-// ACTIVITY STREAM (full width bottom)
-// ============================================================================
-
-const streamStartY = cardStartY + Math.ceil(projects.length / cols) * (cardH + cardGap) + 8;
-const streamH = H - streamStartY - 20;
-
-const streamPanel = hud.panel({
-  title: "Activity Stream",
-  position: { x: 20, y: streamStartY },
-  size: { x: W - 40, y: streamH },
-  glass: false,
-  titleColor: "#ffd43b",
-});
-
-const streamTable = new Table([
-  { key: "time", label: "Time", width: 0.08 },
-  { key: "date", label: "Date", width: 0.08 },
-  { key: "project", label: "Project", width: 0.12 },
-  { key: "type", label: "Type", width: 0.1 },
-  { key: "description", label: "Description", width: 0.62 },
-]);
-
-streamTable.setData(activityEvents.map(e => ({
-  ...e,
-  _badge: e.type.toUpperCase(),
-  _badgeColor: typeColors[e.type] || "#c8d6e5",
-  _color: e.color,
-})));
-
-streamPanel.onContent((ctx, x, y, w, h) => {
-  streamTable.render(ctx, x, y, w, h);
-});
-
-// ============================================================================
-// LIVE SIMULATION - add new events periodically
-// ============================================================================
-
-function addLiveEvent(): void {
-  const project = projects[Math.floor(Math.random() * projects.length)];
-  const type = eventTypes[Math.floor(Math.random() * eventTypes.length)];
-  const now = new Date();
-
-  let desc = "";
-  if (type === "commit") desc = commitMessages[Math.floor(Math.random() * commitMessages.length)];
-  else if (type === "mission") desc = missionDescs[Math.floor(Math.random() * missionDescs.length)];
-  else if (type === "dream") desc = "Babelfish dream cycle completed";
-  else if (type === "worker") desc = ["Arthur", "Trillian", "Mac"][Math.floor(Math.random() * 3)] + " worker task complete";
-  else if (type === "deploy") desc = "Deployed to " + (Math.random() > 0.5 ? "production" : "staging");
-  else desc = "Code review " + (Math.random() > 0.5 ? "approved" : "needs revision");
-
-  const event: ActivityEvent = {
-    time: now.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" }),
-    date: now.toLocaleDateString("en-GB", { day: "2-digit", month: "short" }),
-    project: project.name,
-    type,
-    description: desc,
-    color: project.color,
-  };
-
-  activityEvents.unshift(event);
-  if (activityEvents.length > 100) activityEvents.length = 100;
-
-  streamTable.setData(activityEvents.map(e => ({
-    ...e,
-    _badge: e.type.toUpperCase(),
-    _badgeColor: typeColors[e.type] || "#c8d6e5",
-    _color: e.color,
-  })));
-
-  // Update project activity sparkline
-  const ts = projectSeries.get(project.name);
-  if (ts) {
-    ts.push(2 + Math.random() * 8);
+/** Generate worker task blocks during mission execution */
+function genWorkerTasks(color: string, count: number): SwimlaneEvent[] {
+  const events: SwimlaneEvent[] = [];
+  const taskTypes = [
+    "code-review", "build", "test-run", "deploy", "lint", "format",
+    "research", "plan", "investigate", "benchmark",
+  ];
+  for (let i = 0; i < count; i++) {
+    const day = randInt(0, 89);
+    const hour = randInt(8, 22);
+    const durationMin = randInt(5, 90);
+    const start = ORIGIN + day * DAY + hour * HOUR;
+    events.push({
+      start,
+      end: start + durationMin * 60000,
+      label: taskTypes[randInt(0, taskTypes.length - 1)],
+      shape: "rect",
+      color,
+      data: { type: "worker-task" },
+    });
   }
+  return events;
+}
 
-  // Randomly advance a workflow stage
-  if (Math.random() > 0.7) {
-    const stages = ["plan", "code", "review", "deploy"] as const;
-    const mg = projectWorkflows.get(project.name);
-    if (mg) {
-      for (const stage of stages) {
-        const node = mg.nodes.find(n => n.id === stage);
-        if (node && node.status === "running") {
-          node.status = "completed";
-          const nextIdx = stages.indexOf(stage) + 1;
-          if (nextIdx < stages.length) {
-            const nextNode = mg.nodes.find(n => n.id === stages[nextIdx]);
-            if (nextNode && nextNode.status === "pending") {
-              nextNode.status = "running";
-            }
-          }
-          break;
-        }
-      }
-    }
+/** Generate nightly dream diamonds at ~03:00 */
+function genDreams(color: string): SwimlaneEvent[] {
+  const events: SwimlaneEvent[] = [];
+  for (let day = 0; day < 90; day++) {
+    // Dreams happen most nights but not all
+    if (rand() < 0.15) continue;
+    const minuteJitter = randInt(-30, 30);
+    events.push({
+      start: ORIGIN + day * DAY + 3 * HOUR + minuteJitter * 60000,
+      shape: "diamond",
+      color,
+      label: "dream",
+      data: { type: "dream", day },
+    });
   }
-
-  // Update header metrics
-  project.events++;
-  if (type === "commit") project.commits++;
-  const newTotal = projects.reduce((s, p) => s + p.events, 0);
-  const newCommits = projects.reduce((s, p) => s + p.commits, 0);
-  headerMetrics.set("Total Events", String(newTotal), "#22d3ee");
-  headerMetrics.set("Total Commits", String(newCommits), "#a78bfa");
+  return events;
 }
 
-function scheduleLiveEvent(): void {
-  const delay = 3000 + Math.random() * 7000;
-  setTimeout(() => {
-    addLiveEvent();
-    scheduleLiveEvent();
-  }, delay);
-}
-scheduleLiveEvent();
+// ============================================================================
+// BUILD GROUPS
+// ============================================================================
+
+const groups: SwimlaneGroup[] = [
+  {
+    id: "git",
+    label: "GIT",
+    color: "#51cf66",
+    lanes: [
+      { id: "git-agentsmith", label: "agentsmith", events: genCommits("#f97316", 0.7) },
+      { id: "git-marvin", label: "marvin", events: genCommits("#a78bfa", 0.6) },
+      { id: "git-area42", label: "area42", events: genCommits("#22d3ee", 0.5) },
+      { id: "git-suits", label: "suits", events: genCommits("#51cf66", 0.4) },
+      { id: "git-boringbank", label: "BoringBank", events: genCommits("#4dabf7", 0.65) },
+      { id: "git-voice", label: "voice-pipeline", events: genCommits("#ff6b6b", 0.3) },
+      { id: "git-vale", label: "vale", events: genCommits("#ffd43b", 0.35) },
+    ],
+  },
+  {
+    id: "missions",
+    label: "MISSIONS",
+    color: "#4dabf7",
+    lanes: [
+      { id: "mission-agentsmith", label: "agentsmith", events: genMissions("#f97316", 25) },
+      { id: "mission-marvin", label: "marvin", events: genMissions("#a78bfa", 18) },
+      { id: "mission-boringbank", label: "BoringBank", events: genMissions("#4dabf7", 22) },
+      { id: "mission-suits", label: "suits", events: genMissions("#51cf66", 12) },
+    ],
+  },
+  {
+    id: "workers",
+    label: "WORKERS",
+    color: "#f97316",
+    lanes: [
+      { id: "worker-arthur", label: "arthur", events: genWorkerTasks("#f97316", 45) },
+      { id: "worker-trillian", label: "trillian", events: genWorkerTasks("#4dabf7", 35) },
+      { id: "worker-ants", label: "ants", events: genWorkerTasks("#22d3ee", 20) },
+    ],
+  },
+  {
+    id: "infra",
+    label: "INFRA",
+    color: "#a78bfa",
+    lanes: [
+      { id: "infra-babelfish", label: "babelfish", events: genDreams("#a78bfa") },
+    ],
+  },
+];
 
 // ============================================================================
-// CONSOLE LOG
+// SWIMLANE INSTANCE
 // ============================================================================
+
+const swimlane = new Swimlane({
+  laneHeight: 24,
+  labelWidth: 120,
+  minimapHeight: 40,
+  timeAxisHeight: 30,
+});
+
+swimlane.setData(groups);
+// Start with last 14 days in view
+swimlane.setViewRange(NOW - 14 * DAY, NOW + 1 * DAY);
+
+// Attach interaction handlers
+swimlane.attach(canvas, (hit) => {
+  console.log("Event clicked:", hit.group.label, "/", hit.lane.label, hit.event);
+});
+
+// ============================================================================
+// TITLE OVERLAY
+// ============================================================================
+
+function renderTitle(ctx: CanvasRenderingContext2D, w: number): void {
+  // Subtle title in top-left corner of the label area
+  ctx.save();
+  ctx.fillStyle = NeonTheme.textDim;
+  ctx.font = "bold 10px system-ui";
+  ctx.textAlign = "left";
+  ctx.textBaseline = "top";
+  ctx.fillText("TEMPUSFUGIT", 8, 8);
+  ctx.fillStyle = "#3d4f63";
+  ctx.font = "8px system-ui";
+  ctx.fillText("90-day swimlane", 8, 22);
+  ctx.restore();
+}
+
+// ============================================================================
+// KEYBOARD SHORTCUTS
+// ============================================================================
+
+document.addEventListener("keydown", (e) => {
+  if (e.key === "f" || e.key === "F") {
+    swimlane.fit(canvas.width);
+  }
+  if (e.key === "t" || e.key === "T") {
+    // Jump to today
+    swimlane.setViewRange(NOW - 2 * DAY, NOW + 0.5 * DAY);
+  }
+  if (e.key === "w" || e.key === "W") {
+    // Last week
+    swimlane.setViewRange(NOW - 7 * DAY, NOW + 0.5 * DAY);
+  }
+});
+
+// ============================================================================
+// RENDER LOOP
+// ============================================================================
+
+function frame(): void {
+  const dpr = window.devicePixelRatio || 1;
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  const w = window.innerWidth;
+  const h = window.innerHeight;
+
+  swimlane.render(ctx, 0, 0, w, h);
+  renderTitle(ctx, w);
+
+  // Help text bottom-right
+  ctx.save();
+  ctx.fillStyle = "#3d4f63";
+  ctx.font = "9px system-ui";
+  ctx.textAlign = "right";
+  ctx.textBaseline = "bottom";
+  ctx.fillText("Scroll: zoom | Drag: pan | F: fit all | T: today | W: week", w - 12, h - 44);
+  ctx.restore();
+
+  requestAnimationFrame(frame);
+}
+
+frame();
+
+// ============================================================================
+// CONSOLE
+// ============================================================================
+
+let totalEvents = 0;
+for (const g of groups) for (const l of g.lanes) totalEvents += l.events.length;
 
 console.log(
-  "%c Area42 %c Timeline Demo ",
+  "%c Area42 %c Swimlane Timeline ",
   "background:#0a0e17;color:#22d3ee;font-weight:bold;padding:4px 8px;border-radius:4px 0 0 4px",
   "background:#131a2b;color:#c8d6e5;padding:4px 8px;border-radius:0 4px 4px 0",
 );
-console.log("  Project activity timeline with 90-day sparklines and workflow graphs");
-console.log("  " + projects.length + " projects tracked, " + totalEvents + " total events");
-console.log("  Live events appear every 3-10 seconds. Drag panels by title bars. Press ? for help.");
+console.log("  " + groups.length + " groups, " + totalEvents + " events across 90 days");
+console.log("  Scroll to zoom, drag to pan, click events for details");
+console.log("  Keys: F=fit all, T=today, W=last week");

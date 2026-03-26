@@ -29,6 +29,8 @@ export { MetricDisplay } from "./panels/metric.js";
 export type { MetricEntry } from "./panels/metric.js";
 
 // Charts
+export { Swimlane } from "./charts/swimlane.js";
+export type { SwimlaneGroup, SwimlaneLane, SwimlaneEvent, SwimlaneOptions } from "./charts/swimlane.js";
 export { TimeSeries } from "./charts/timeseries.js";
 export type { TimeSeriesPoint } from "./charts/timeseries.js";
 

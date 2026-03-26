@@ -138,6 +138,8 @@
     .card.accent-orange .card-tag { background: rgba(249,115,22,0.12); color: #f97316; border-color: rgba(249,115,22,0.2); }
     .card.accent-red { --accent: #ff6b6b; }
     .card.accent-red .card-tag { background: rgba(255,107,107,0.12); color: #ff6b6b; border-color: rgba(255,107,107,0.2); }
+    .card.accent-cyan { --accent: #22d3ee; }
+    .card.accent-cyan .card-tag { background: rgba(34,211,238,0.12); color: #22d3ee; border-color: rgba(34,211,238,0.2); }
 
     .footer {
       padding: 40px 20px;
@@ -196,11 +198,12 @@
     <span class="feature">Glass Panels</span>
     <span class="feature">Particle Effects</span>
     <span class="feature">Real-Time Data</span>
+    <span class="feature">Swimlane Timelines</span>
     <span class="feature">Snap Zones</span>
   </div>
 
   <div class="demos">
-    <a href="/src/demo/main.ts" class="card" onclick="event.preventDefault(); window.location.href='/?demo=main';">
+    <a href="/?demo=main" class="card">
       <span class="card-icon">&#x25C8;</span>
       <div class="card-title">Main Demo</div>
       <div class="card-desc">
@@ -220,34 +223,34 @@
       <span class="card-tag">Security</span>
     </a>
 
-    <a href="#" class="card accent-green" onclick="event.preventDefault();">
+    <a href="/router.html" class="card accent-green">
       <span class="card-icon">&#x2B21;</span>
       <div class="card-title">Router</div>
       <div class="card-desc">
         Marvin intelligence router visualization. Real-time request classification,
         model tier selection, latency sparklines, and routing decision flow.
       </div>
-      <span class="card-tag">Coming Soon</span>
+      <span class="card-tag">AI Routing</span>
     </a>
 
-    <a href="#" class="card accent-blue" onclick="event.preventDefault();">
+    <a href="/timeline.html" class="card accent-cyan">
       <span class="card-icon">&#x2500;&#x2500;&#x25CF;</span>
       <div class="card-title">Timeline</div>
       <div class="card-desc">
-        Temporal event visualization. Mission timelines, agent activity streams,
-        and time-series overlays with zoom and pan navigation.
+        Gantt-style swimlane timeline. 90 days of git commits, missions, worker tasks,
+        and babelfish dreams with zoom, pan, collapsible groups, and minimap navigation.
       </div>
-      <span class="card-tag">Coming Soon</span>
+      <span class="card-tag">Swimlane</span>
     </a>
 
-    <a href="#" class="card accent-orange" onclick="event.preventDefault();">
+    <a href="/investigation.html" class="card accent-orange">
       <span class="card-icon">&#x1F50D;</span>
       <div class="card-title">Investigation</div>
       <div class="card-desc">
         Interactive investigation board. Link analysis between entities,
         evidence clustering, and collaborative annotation tools.
       </div>
-      <span class="card-tag">Coming Soon</span>
+      <span class="card-tag">Analysis</span>
     </a>
   </div>
 
