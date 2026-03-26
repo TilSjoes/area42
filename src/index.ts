@@ -94,3 +94,7 @@ export { Exporter } from "./core/export.js";
 // Selection Analysis
 export { analyzeSelection, renderAnalysis } from "./core/analysis.js";
 export type { AnalysisResult, PathResult, ClusterResult } from "./core/analysis.js";
+
+// Forest
+export { Forest } from "./graph/forest.js";
+export type { ForestTree, ForestLink, ForestOptions, PerspectiveOptions } from "./graph/forest.js";
