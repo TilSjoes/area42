@@ -18,6 +18,9 @@ import { StatusBar } from "../panels/statusbar.js";
 import type { StatusItem } from "../panels/statusbar.js";
 import { CommandPalette } from "../panels/command.js";
 import type { CommandItem } from "../panels/command.js";
+import { Exporter } from "./export.js";
+import { analyzeSelection, renderAnalysis } from "./analysis.js";
+import type { AnalysisResult } from "./analysis.js";
 
 export interface HUDOptions {
   theme?: Theme | "neon" | "glass";
@@ -70,6 +73,17 @@ export class HUD {
   // Status bar and command palette
   private _statusBar: StatusBar = new StatusBar();
   private _commandPalette: CommandPalette = new CommandPalette();
+  // Minimized panel dock
+  private minimizedPanels: Panel[] = [];
+  private dockBarHeight = 28;
+  private dockButtonWidth = 130;
+
+  // Export system
+  private _exporter: Exporter | null = null;
+
+  // Selection analysis
+  private analysisResult: AnalysisResult | null = null;
+  private analysisPanel: Panel | null = null;
 
   // Graph panning state
   private isPanning = false;
@@ -110,6 +124,8 @@ export class HUD {
 
     // Renderer + Scene
     this.renderer = new Renderer(this.container);
+    // Initialize export system
+    this._exporter = new Exporter(this.renderer["canvas"] as HTMLCanvasElement);
     this.scene = new Scene();
 
     // Render loop
@@ -125,6 +141,17 @@ export class HUD {
       // Render scene
       this.scene.render(rc.ctx);
 
+      // Render minimized panel dock bar (above status bar)
+      const dockPanels = this.getMinimizedPanels();
+      if (dockPanels.length > 0) {
+        this.renderDockBar(rc.ctx, rc.width, rc.height, dockPanels);
+      }
+
+      // Render selection analysis panel
+      this.updateAnalysis();
+      if (this.analysisResult && this.analysisResult.nodeCount >= 2) {
+        this.renderAnalysisOverlay(rc.ctx, rc.width, rc.height);
+      }
       // Render status bar at bottom
       const statusBarH = this._statusBar.getHeight();
       this._statusBar.render(rc.ctx, rc.height - statusBarH, rc.width);
@@ -151,6 +178,8 @@ export class HUD {
 
   /** Get the command palette instance */
   get commandPalette(): CommandPalette { return this._commandPalette; }
+  /** Get the export system */
+  get export(): Exporter { return this._exporter!; }
 
   /** Create a floating glass panel */
   panel(options: PanelOptions): Panel {
@@ -186,6 +215,28 @@ export class HUD {
   }
 
   /** Remove a panel */
+  /** Minimize a panel to the dock bar */
+  minimizePanel(panel: Panel): void {
+    if (!panel.minimized) {
+      panel.minimize();
+      if (!this.minimizedPanels.includes(panel)) {
+        this.minimizedPanels.push(panel);
+      }
+    }
+  }
+
+  /** Restore a panel from the dock bar */
+  restoreFromDock(panel: Panel): void {
+    panel.restore();
+    const idx = this.minimizedPanels.indexOf(panel);
+    if (idx >= 0) this.minimizedPanels.splice(idx, 1);
+  }
+
+  /** Get minimized panels list (for dock rendering) */
+  getMinimizedPanels(): Panel[] {
+    return this.minimizedPanels.filter(p => p.minimized);
+  }
+
   removePanel(id: string) {
     const panel = this.panels.get(id);
     if (panel) {
@@ -321,6 +372,13 @@ if (panel.minimized) {        if (panel.contains(point)) return panel;        co
     canvas.addEventListener("mousedown", (e) => {
       const point = this.canvasPoint(e);
 
+      // Dock bar click handling
+      const dockPanel = this.dockButtonAt(point);
+      if (dockPanel) {
+        this.restoreFromDock(dockPanel);
+        return;
+      }
+
       // Status bar click handling
       const statusBarY = this.renderer.height - this._statusBar.getHeight();
       if (point.y >= statusBarY) {
@@ -400,7 +458,7 @@ if (panel.minimized) {        if (panel.contains(point)) return panel;        co
 
       for (const panel of nodes) {
         const wp = panel.worldPosition();
-// Click on minimized dot to restore        if (panel.minimized && panel.contains(point)) {          panel.restore();          return;        }        // Minimize button click        if (panel.isInMinimizeButton(point)) {          panel.minimize();          return;        }
+// Click on minimized dot to restore        if (panel.minimized && panel.contains(point)) {          this.restoreFromDock(panel);          return;        }        // Minimize button click        if (panel.isInMinimizeButton(point)) {          this.minimizePanel(panel);          return;        }
         if (panel.closable) {
           const closeX = wp.x + panel.size.x - 20;
           const closeY = wp.y;
@@ -739,7 +797,7 @@ child.showTooltip(hitNode, point.x, point.y);
   private buildPanelContextMenu(panel: Panel): MenuItem[] {
     return [
       { label: panel.collapsed ? "Expand" : "Collapse", icon: panel.collapsed ? "▼" : "▲", action: () => { panel.collapsed = !panel.collapsed; } },
-{ label: panel.minimized ? "Restore" : "Minimize", icon: panel.minimized ? "u25a1" : "u2014", action: () => { if (panel.minimized) panel.restore(); else panel.minimize(); } },
+{ label: panel.minimized ? "Restore" : "Minimize", icon: panel.minimized ? "u25a1" : "u2014", action: () => { if (panel.minimized) this.restoreFromDock(panel); else this.minimizePanel(panel); } },
       { label: "Close", icon: "×", shortcut: "Del", action: () => { if (typeof (panel as any).onCloseCallback === "function") { (panel as any).onCloseCallback(); } else { panel.visible = false; } } },
       { label: "", separator: true, action: () => {} },
       { label: "Reset Position", icon: "↺", action: () => { panel.position.x = 50; panel.position.y = 50; } },
@@ -753,6 +811,9 @@ child.showTooltip(hitNode, point.x, point.y);
       { label: "Save Positions", icon: "💾", action: () => { for (const child of this.scene.root.children) { if (child instanceof Graph) { child.savePositions(); } } } },
       { label: "", separator: true, action: () => {} },
       { label: this.gridVisible ? "Hide Grid" : "Show Grid", icon: "#", shortcut: "G", action: () => { this.gridVisible = !this.gridVisible; } },
+      { label: "", separator: true, action: () => {} },
+      { label: "Screenshot (PNG)", icon: "D83dDcf7", action: () => { this._exporter?.downloadPNG(); } },
+      { label: "Export Graph as JSON", icon: "D83dDcc4", action: () => { for (const child of this.scene.root.children) { if (child instanceof Graph) { this._exporter?.downloadJSON(child); break; } } } },
     ];
   }
 
@@ -871,6 +932,166 @@ child.showTooltip(hitNode, point.x, point.y);
     const wp = this.resizeTarget.worldPosition();
     this.resizeTarget.size.x = Math.max(150, point.x - wp.x);
     this.resizeTarget.size.y = Math.max(80, point.y - wp.y);
+  }
+
+  /** Render the dock bar for minimized panels */
+  private renderDockBar(ctx: CanvasRenderingContext2D, w: number, h: number, panels: Panel[]): void {
+    const statusH = this._statusBar.getHeight();
+    const dockY = h - statusH - this.dockBarHeight;
+    const btnW = this.dockButtonWidth;
+    const btnH = this.dockBarHeight - 4;
+    const gap = 6;
+    const pad = 10;
+
+    // Dock bar background
+    ctx.save();
+    ctx.fillStyle = "rgba(10, 14, 23, 0.85)";
+    ctx.fillRect(0, dockY, w, this.dockBarHeight);
+    ctx.strokeStyle = "rgba(123, 104, 238, 0.2)";
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(0, dockY);
+    ctx.lineTo(w, dockY);
+    ctx.stroke();
+
+    // Dock buttons
+    let bx = pad;
+    for (const panel of panels) {
+      const by = dockY + 2;
+
+      // Button background
+      ctx.fillStyle = "rgba(255,255,255,0.04)";
+      ctx.beginPath();
+      ctx.moveTo(bx + 4, by);
+      ctx.lineTo(bx + btnW - 4, by);
+      ctx.quadraticCurveTo(bx + btnW, by, bx + btnW, by + 4);
+      ctx.lineTo(bx + btnW, by + btnH - 4);
+      ctx.quadraticCurveTo(bx + btnW, by + btnH, bx + btnW - 4, by + btnH);
+      ctx.lineTo(bx + 4, by + btnH);
+      ctx.quadraticCurveTo(bx, by + btnH, bx, by + btnH - 4);
+      ctx.lineTo(bx, by + 4);
+      ctx.quadraticCurveTo(bx, by, bx + 4, by);
+      ctx.closePath();
+      ctx.fill();
+      ctx.strokeStyle = "rgba(123, 104, 238, 0.15)";
+      ctx.lineWidth = 0.5;
+      ctx.stroke();
+
+      // Color dot
+      const dotColor = panel.titleColor || "#7b68ee";
+      ctx.beginPath();
+      ctx.arc(bx + 12, by + btnH / 2, 4, 0, Math.PI * 2);
+      ctx.fillStyle = dotColor;
+      ctx.fill();
+      ctx.shadowColor = dotColor;
+      ctx.shadowBlur = 6;
+      ctx.fill();
+      ctx.shadowBlur = 0;
+
+      // Title text (truncated)
+      ctx.fillStyle = "#c8d6e5";
+      ctx.font = "10px system-ui";
+      ctx.textBaseline = "middle";
+      ctx.textAlign = "left";
+      let title = panel.title;
+      const maxTextW = btnW - 30;
+      while (title.length > 3 && ctx.measureText(title).width > maxTextW) {
+        title = title.slice(0, -1);
+      }
+      if (title !== panel.title) title += "...";
+      ctx.fillText(title, bx + 22, by + btnH / 2);
+
+      bx += btnW + gap;
+    }
+
+    ctx.restore();
+  }
+
+  /** Check if a click hits a dock bar button and return the panel */
+  private dockButtonAt(point: { x: number; y: number }): Panel | null {
+    const panels = this.getMinimizedPanels();
+    if (panels.length === 0) return null;
+
+    const statusH = this._statusBar.getHeight();
+    const dockY = this.renderer.height - statusH - this.dockBarHeight;
+    const btnW = this.dockButtonWidth;
+    const btnH = this.dockBarHeight - 4;
+    const gap = 6;
+    const pad = 10;
+
+    if (point.y < dockY || point.y > dockY + this.dockBarHeight) return null;
+
+    let bx = pad;
+    for (const panel of panels) {
+      if (point.x >= bx && point.x <= bx + btnW) {
+        return panel;
+      }
+      bx += btnW + gap;
+    }
+    return null;
+  }
+
+  /** Update analysis based on current graph selection */
+  private updateAnalysis(): void {
+    for (const child of this.scene.root.children) {
+      if (child instanceof Graph) {
+        const selected = child.getNodes().filter((n: GraphNode) => n.selected);
+        if (selected.length >= 2) {
+          this.analysisResult = analyzeSelection(child, selected);
+          return;
+        }
+      }
+    }
+    this.analysisResult = null;
+  }
+
+  /** Render analysis overlay panel */
+  private renderAnalysisOverlay(ctx: CanvasRenderingContext2D, w: number, h: number): void {
+    if (!this.analysisResult) return;
+
+    const panelW = 260;
+    const panelH = Math.min(350, h - 100);
+    const px = w - panelW - 16;
+    const py = 60;
+    const r = 8;
+
+    ctx.save();
+
+    // Glass background
+    ctx.beginPath();
+    ctx.moveTo(px + r, py);
+    ctx.lineTo(px + panelW - r, py);
+    ctx.quadraticCurveTo(px + panelW, py, px + panelW, py + r);
+    ctx.lineTo(px + panelW, py + panelH - r);
+    ctx.quadraticCurveTo(px + panelW, py + panelH, px + panelW - r, py + panelH);
+    ctx.lineTo(px + r, py + panelH);
+    ctx.quadraticCurveTo(px, py + panelH, px, py + panelH - r);
+    ctx.lineTo(px, py + r);
+    ctx.quadraticCurveTo(px, py, px + r, py);
+    ctx.closePath();
+    ctx.fillStyle = "rgba(10, 14, 23, 0.88)";
+    ctx.fill();
+    ctx.strokeStyle = "rgba(0, 212, 170, 0.3)";
+    ctx.lineWidth = 1;
+    ctx.stroke();
+
+    // Top accent line
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(px, py, panelW, 1.5);
+    ctx.clip();
+    const grad = ctx.createLinearGradient(px, py, px + panelW, py);
+    grad.addColorStop(0, "transparent");
+    grad.addColorStop(0.5, "rgba(0, 212, 170, 0.5)");
+    grad.addColorStop(1, "transparent");
+    ctx.fillStyle = grad;
+    ctx.fillRect(px, py, panelW, 1.5);
+    ctx.restore();
+
+    // Content
+    renderAnalysis(ctx, this.analysisResult, px + 10, py + 10, panelW - 20, panelH - 20);
+
+    ctx.restore();
   }
 
   /** Destroy the HUD */

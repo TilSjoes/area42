@@ -14,6 +14,7 @@
 import { Swimlane } from "../charts/swimlane.js";
 import type { SwimlaneGroup, SwimlaneEvent } from "../charts/swimlane.js";
 import { Heatmap } from "../charts/heatmap.js";
+import { ToastManager } from "../panels/toast.js";
 import { NeonTheme } from "../themes/neon.js";
 
 // ============================================================================
@@ -247,6 +248,8 @@ for (let day = 0; day < 91; day++) {
 heatmap.setData(hmData);
 
 let showHeatmap = true;
+let showReplayControls = false;
+const toasts = new ToastManager();
 
 // ============================================================================
 // SWIMLANE INSTANCE
@@ -262,8 +265,30 @@ const swimlane = new Swimlane({
 swimlane.setData(groups);
 // Start with last 14 days in view
 swimlane.setViewRange(NOW - 14 * DAY, NOW + 1 * DAY);
+// Set up replay event callback
+swimlane.onReplayEvent = (event, group, lane) => {
+  const shape = event.shape || "dot";
+  const label = event.label || shape;
+  const toastType = shape === "diamond" ? "warning" as const : shape === "rect" ? "info" as const : "success" as const;
+  toasts.show({
+    message: group.label + "/" + lane.label + ": " + label,
+    type: toastType,
+    duration: 1500,
+    position: "bottom-right",
+  });
+};
 
 // Attach interaction handlers
+// Handle replay control clicks
+canvas.addEventListener("click", (e) => {
+  if (!showReplayControls) return;
+  const rect = canvas.getBoundingClientRect();
+  const dpr = window.devicePixelRatio || 1;
+  const mx = (e.clientX - rect.left);
+  const my = (e.clientY - rect.top);
+  swimlane.handleReplayClick(mx, my, window.innerWidth, window.innerHeight, 0, 0);
+});
+
 swimlane.attach(canvas, (hit) => {
   console.log("Event clicked:", hit.group.label, "/", hit.lane.label, hit.event);
 });
@@ -351,6 +376,14 @@ document.addEventListener("keydown", (e) => {
     // Last week
     swimlane.setViewRange(NOW - 7 * DAY, NOW + 0.5 * DAY);
   }
+  if (e.key === "p" || e.key === "P") {
+    showReplayControls = !showReplayControls;
+    if (showReplayControls) {
+      swimlane.startReplay();
+    } else {
+      swimlane.stopReplay();
+    }
+  }
   if (e.key === "h" || e.key === "H") {
     showHeatmap = !showHeatmap;
   }
@@ -371,6 +404,13 @@ function frame(): void {
   swimlane.render(ctx, 0, 0, w, h);
   renderTitle(ctx, w);
   renderHeatmapPanel(ctx, w, h);
+  // Replay overlay
+  if (showReplayControls) {
+    swimlane.renderReplayOverlay(ctx, 0, 0, w, h);
+  }
+
+  // Toast notifications
+  toasts.render(ctx, w, h);
 
   // Help text bottom-right
   ctx.save();
@@ -378,7 +418,7 @@ function frame(): void {
   ctx.font = "9px system-ui";
   ctx.textAlign = "right";
   ctx.textBaseline = "bottom";
-  ctx.fillText("Scroll: zoom | Drag: pan | F: fit all | T: today | W: week | H: heatmap", w - 12, h - 44);
+  ctx.fillText("Scroll: zoom | Drag: pan | F: fit | T: today | W: week | H: heatmap | P: replay", w - 12, h - 44);
   ctx.restore();
 
   requestAnimationFrame(frame);

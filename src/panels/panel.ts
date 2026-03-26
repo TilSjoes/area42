@@ -39,6 +39,9 @@ export class Panel extends SceneNode {
 
   /** Minimized state: panel shrinks to a small icon dot */
   minimized = false;
+  /** Saved position/size before minimize, for restoration */
+  preMinimizePosition: { x: number; y: number } | null = null;
+  preMinimizeSize: { x: number; y: number } | null = null;
   private minimizedDotSize = 24;
 
   /** Saved position/size before snapping, for restore */
@@ -91,6 +94,8 @@ export class Panel extends SceneNode {
   /** Minimize panel to a small icon dot */
   minimize(): void {
     if (!this.minimized) {
+      this.preMinimizePosition = { x: this.position.x, y: this.position.y };
+      this.preMinimizeSize = { x: this.size.x, y: this.size.y };
       this.minimized = true;
     }
   }
@@ -98,6 +103,12 @@ export class Panel extends SceneNode {
   /** Restore panel from minimized state */
   restore(): void {
     if (this.minimized) {
+      if (this.preMinimizePosition && this.preMinimizeSize) {
+        this.position.x = this.preMinimizePosition.x;
+        this.position.y = this.preMinimizePosition.y;
+        this.size.x = this.preMinimizeSize.x;
+        this.size.y = this.preMinimizeSize.y;
+      }
       this.minimized = false;
     }
   }

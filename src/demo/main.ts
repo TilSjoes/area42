@@ -914,6 +914,8 @@ hud.commandPalette.register([
   { id: 'demo-governance', label: 'Governance Demo', category: 'Demo', action: () => { window.location.href = '/governance.html'; } },
   { id: 'demo-router', label: 'Router Demo', category: 'Demo', action: () => { window.location.href = '/router.html'; } },
   { id: 'demo-timeline', label: 'Timeline Demo', category: 'Demo', action: () => { window.location.href = '/timeline.html'; } },
+  { id: "export-png", label: "Export as PNG", category: "Export", icon: "P", action: () => { hud.export.downloadPNG(); } },
+  { id: "export-json", label: "Export Graph as JSON", category: "Export", icon: "J", action: () => { hud.export.downloadJSON(graph); } },
 ]);
 
 // Export for HUD double-click handler and edge clicks

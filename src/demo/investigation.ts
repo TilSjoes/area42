@@ -21,6 +21,9 @@ import { Breadcrumb } from "../panels/breadcrumb.js";
 import { Tree } from "../graph/tree.js";
 import type { TreeNodeData } from "../graph/tree.js";
 import type { BreadcrumbItem } from "../panels/breadcrumb.js";
+import { Swimlane } from "../charts/swimlane.js";
+import type { SwimlaneGroup } from "../charts/swimlane.js";
+import { ToastManager } from "../panels/toast.js";
 
 // --- Universe mode: full space background ---
 const hud = new HUD("#hud", {
@@ -723,6 +726,98 @@ orgPanel.onContent((ctx, x, y, w, h) => {
 });
 
 // ============================================================================
+// ============================================================================
+// TRANSACTION MINI-TIMELINE (replay)
+// ============================================================================
+
+const txToasts = new ToastManager();
+const txTimeline = new Swimlane({ laneHeight: 20, labelWidth: 80, minimapHeight: 24, timeAxisHeight: 22 });
+
+// Build timeline from transactions
+const txGroups: SwimlaneGroup[] = [
+  {
+    id: "transactions",
+    label: "TRANSAKSJONER",
+    color: "#ffd43b",
+    lanes: customers.map(c => ({
+      id: "tx-lane-" + c.id,
+      label: c.name.split(" ")[0],
+      events: transactions
+        .filter(t => accounts.some(a => a.id === t.accountId && a.customerId === c.id))
+        .map(t => ({
+          start: new Date(t.date).getTime(),
+          label: formatNOK(t.amount) + " " + t.currency,
+          color: t.status === "cleared" ? "#51cf66" : t.status === "review" ? "#ffd43b" : "#ff6b6b",
+          shape: "diamond" as const,
+          data: t,
+        })),
+    })),
+  },
+];
+txTimeline.setData(txGroups);
+
+txTimeline.onReplayEvent = (event, group, lane) => {
+  const t = event.data;
+  if (t) {
+    const statusLabel = t.status === "cleared" ? "OK" : t.status === "review" ? "SJEKK" : "FLAGG";
+    txToasts.show({
+      message: lane.label + ": " + formatNOK(t.amount) + " " + t.currency + " [" + statusLabel + "]",
+      type: t.status === "flagged" ? "error" : t.status === "review" ? "warning" : "info",
+      duration: 2000,
+      position: "bottom-right",
+    });
+  }
+};
+
+const timelinePanel = hud.panel({
+  title: "Tidslinje",
+  position: { x: 20, y: H - 320 },
+  size: { x: W - 480, y: 160 },
+  glass: true,
+  titleColor: "#ffd43b",
+});
+
+let txReplayActive = false;
+timelinePanel.onContent((ctx, x, y, w, h) => {
+  txTimeline.render(ctx, x, y, w, h - 16);
+  if (txReplayActive) {
+    txTimeline.renderReplayOverlay(ctx, x, y, w, h - 16);
+  }
+  txToasts.render(ctx, W, H);
+
+  // Replay button
+  ctx.fillStyle = txReplayActive ? "rgba(255, 107, 107, 0.2)" : "rgba(255, 255, 255, 0.05)";
+  ctx.fillRect(x + w - 60, y + h - 14, 56, 12);
+  ctx.fillStyle = txReplayActive ? "#ff6b6b" : "#6b7b8d";
+  ctx.font = "bold 8px system-ui";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillText(txReplayActive ? "STOP" : "REPLAY", x + w - 32, y + h - 8);
+  ctx.textAlign = "left";
+});
+
+// ============================================================================
+// COMMAND PALETTE (with export)
+// ============================================================================
+
+hud.commandPalette.register([
+  { id: "export-png", label: "Export as PNG", category: "Export", action: () => { hud.export.downloadPNG("investigation.png"); } },
+  { id: "export-json", label: "Export Graph as JSON", category: "Export", action: () => { hud.export.downloadJSON(graph); } },
+  { id: "export-report", label: "Export Investigation Report", category: "Export", action: () => {
+    const report = hud.export.toReport(
+      breadcrumb.getItems ? breadcrumb.getItems().map((i: any) => i.label) : [],
+      graph.getNodes().map(n => ({ id: n.id, label: n.label, color: n.color })),
+      []
+    );
+    hud.export.download(JSON.stringify(report, null, 2), "investigation-report.json", "application/json");
+  } },
+  { id: "replay-tx", label: "Replay Transactions", category: "Action", action: () => {
+    txReplayActive = !txReplayActive;
+    if (txReplayActive) txTimeline.startReplay();
+    else txTimeline.stopReplay();
+  } },
+]);
+
 // SIMULATE LIVE ACTIVITY
 // ============================================================================
 

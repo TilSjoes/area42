@@ -509,6 +509,16 @@ toastOverlay.onContent((ctx, x, y, w, h) => {
 });
 
 // ============================================================================
+// ============================================================================
+// COMMAND PALETTE (with export)
+// ============================================================================
+
+hud.commandPalette.register([
+  { id: "export-png", label: "Export as PNG", category: "Export", action: () => { hud.export.downloadPNG("router-dashboard.png"); } },
+  { id: "export-json", label: "Export Graph as JSON", category: "Export", action: () => { hud.export.downloadJSON(graph); } },
+  { id: "export-csv", label: "Export Routing Table as CSV", category: "Export", action: () => { hud.export.downloadCSV(streamTable, "routing-events.csv"); } },
+]);
+
 // SIMULATION ENGINE
 // ============================================================================
 

@@ -87,3 +87,10 @@ export type { TreeNodeData, TreeOptions } from "./graph/tree.js";
 // Toast
 export { ToastManager } from "./panels/toast.js";
 export type { ToastOptions } from "./panels/toast.js";
+
+// Export System
+export { Exporter } from "./core/export.js";
+
+// Selection Analysis
+export { analyzeSelection, renderAnalysis } from "./core/analysis.js";
+export type { AnalysisResult, PathResult, ClusterResult } from "./core/analysis.js";

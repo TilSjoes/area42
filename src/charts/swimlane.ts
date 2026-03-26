@@ -814,4 +814,332 @@ export class Swimlane {
     }
     ctx.restore();
   }
+  // ============================================================
+  // REPLAY MODE
+  // ============================================================
+
+  private replayIndex = -1;
+  private replayIsPlaying = false;
+  private replaySpeed = 1;
+  private replayAnimFrame: number | null = null;
+  private replayLastTime = 0;
+  private replayMsPerEvent = 500;
+  private replayAccum = 0;
+  private replaySortedEvents: { time: number; event: SwimlaneEvent; group: SwimlaneGroup; lane: SwimlaneLane }[] = [];
+  private replayControlsHeight = 36;
+
+  /** Callback fired when replay cursor passes an event */
+  onReplayEvent: ((event: SwimlaneEvent, group: SwimlaneGroup, lane: SwimlaneLane) => void) | null = null;
+
+  /** Get sorted flat list of all events */
+  private buildReplayEvents(): void {
+    this.replaySortedEvents = [];
+    for (const g of this.groups) {
+      for (const l of g.lanes) {
+        for (const e of l.events) {
+          this.replaySortedEvents.push({ time: e.start, event: e, group: g, lane: l });
+        }
+      }
+    }
+    this.replaySortedEvents.sort((a, b) => a.time - b.time);
+  }
+
+  /** Start replay from the beginning */
+  startReplay(): void {
+    this.buildReplayEvents();
+    if (this.replaySortedEvents.length === 0) return;
+    this.replayIndex = -1;
+    this.replayIsPlaying = true;
+    this.replayAccum = 0;
+    this.replayLastTime = performance.now();
+    // Zoom to full range
+    this.viewStart = this.dataStart;
+    this.viewEnd = this.dataEnd;
+    this.replayTick();
+  }
+
+  /** Stop replay */
+  stopReplay(): void {
+    this.replayIsPlaying = false;
+    if (this.replayAnimFrame !== null) {
+      cancelAnimationFrame(this.replayAnimFrame);
+      this.replayAnimFrame = null;
+    }
+  }
+
+  /** Step forward one event */
+  stepForward(): void {
+    if (this.replaySortedEvents.length === 0) this.buildReplayEvents();
+    if (this.replayIndex < this.replaySortedEvents.length - 1) {
+      this.replayIndex++;
+      this.emitReplayEvent();
+    }
+  }
+
+  /** Step backward one event */
+  stepBackward(): void {
+    if (this.replayIndex > 0) {
+      this.replayIndex--;
+    }
+  }
+
+  /** Set playback speed multiplier */
+  setPlaybackSpeed(speed: number): void {
+    this.replaySpeed = speed;
+  }
+
+  /** Get current replay state */
+  getReplayState(): { isPlaying: boolean; index: number; total: number; speed: number } {
+    return {
+      isPlaying: this.replayIsPlaying,
+      index: this.replayIndex,
+      total: this.replaySortedEvents.length,
+      speed: this.replaySpeed,
+    };
+  }
+
+  /** Internal animation tick for replay */
+  private replayTick(): void {
+    if (!this.replayIsPlaying) return;
+
+    const now = performance.now();
+    const dt = now - this.replayLastTime;
+    this.replayLastTime = now;
+    this.replayAccum += dt * this.replaySpeed;
+
+    while (this.replayAccum >= this.replayMsPerEvent && this.replayIndex < this.replaySortedEvents.length - 1) {
+      this.replayAccum -= this.replayMsPerEvent;
+      this.replayIndex++;
+      this.emitReplayEvent();
+    }
+
+    if (this.replayIndex >= this.replaySortedEvents.length - 1) {
+      this.replayIsPlaying = false;
+      return;
+    }
+
+    this.replayAnimFrame = requestAnimationFrame(() => this.replayTick());
+  }
+
+  /** Emit the current replay event callback */
+  private emitReplayEvent(): void {
+    if (this.replayIndex >= 0 && this.replayIndex < this.replaySortedEvents.length) {
+      const entry = this.replaySortedEvents[this.replayIndex];
+      if (this.onReplayEvent) {
+        this.onReplayEvent(entry.event, entry.group, entry.lane);
+      }
+    }
+  }
+
+  /** Get the current replay cursor time (for rendering) */
+  getReplayCursorTime(): number | null {
+    if (this.replayIndex < 0 || this.replayIndex >= this.replaySortedEvents.length) return null;
+    return this.replaySortedEvents[this.replayIndex].time;
+  }
+
+  /** Render replay cursor and controls overlay */
+  renderReplayOverlay(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number): void {
+    const cursorTime = this.getReplayCursorTime();
+    if (cursorTime === null && !this.replayIsPlaying && this.replayIndex < 0) return;
+
+    const timelineX = x + this.labelWidth;
+    const timelineW = w - this.labelWidth;
+    const contentY = y + this.timeAxisHeight;
+    const contentH = h - this.timeAxisHeight - this.minimapHeight;
+    const range = this.viewEnd - this.viewStart;
+
+    // Draw replay cursor line
+    if (cursorTime !== null && range > 0) {
+      const frac = (cursorTime - this.viewStart) / range;
+      const px = timelineX + frac * timelineW;
+
+      if (frac >= 0 && frac <= 1) {
+        ctx.save();
+        ctx.strokeStyle = "#ff6b6b";
+        ctx.lineWidth = 2;
+        ctx.shadowColor = "#ff6b6b";
+        ctx.shadowBlur = 8;
+        ctx.beginPath();
+        ctx.moveTo(px, contentY);
+        ctx.lineTo(px, contentY + contentH);
+        ctx.stroke();
+        ctx.shadowBlur = 0;
+
+        // Cursor head triangle
+        ctx.fillStyle = "#ff6b6b";
+        ctx.beginPath();
+        ctx.moveTo(px - 5, contentY);
+        ctx.lineTo(px + 5, contentY);
+        ctx.lineTo(px, contentY + 8);
+        ctx.closePath();
+        ctx.fill();
+
+        ctx.restore();
+      }
+
+      // Highlight events up to cursor
+      if (this.replayIndex >= 0) {
+        ctx.save();
+        for (let i = Math.max(0, this.replayIndex - 2); i <= this.replayIndex; i++) {
+          if (i >= this.replaySortedEvents.length) break;
+          const entry = this.replaySortedEvents[i];
+          const eFrac = (entry.time - this.viewStart) / range;
+          if (eFrac < 0 || eFrac > 1) continue;
+          const ex = timelineX + eFrac * timelineW;
+          const intensity = i === this.replayIndex ? 1.0 : 0.5;
+
+          ctx.beginPath();
+          ctx.arc(ex, contentY + contentH / 2, 6 * intensity + 3, 0, Math.PI * 2);
+          ctx.fillStyle = "rgba(255, 107, 107, " + (0.3 * intensity) + ")";
+          ctx.fill();
+        }
+        ctx.restore();
+      }
+    }
+
+    // Playback controls bar
+    const ctrlY = y + h - this.minimapHeight - this.replayControlsHeight;
+    const ctrlH = this.replayControlsHeight;
+
+    ctx.save();
+    ctx.fillStyle = "rgba(10, 14, 23, 0.9)";
+    ctx.fillRect(x, ctrlY, w, ctrlH);
+    ctx.strokeStyle = "rgba(255, 107, 107, 0.3)";
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(x, ctrlY);
+    ctx.lineTo(x + w, ctrlY);
+    ctx.stroke();
+
+    // Control buttons
+    const btnSize = 20;
+    const btnGap = 8;
+    const centerX = x + w / 2;
+    const btnY = ctrlY + (ctrlH - btnSize) / 2;
+
+    const buttons = [
+      { label: "|<<", x: centerX - btnSize * 2.5 - btnGap * 2, action: "first" },
+      { label: "<<",  x: centerX - btnSize * 1.5 - btnGap, action: "prev" },
+      { label: this.replayIsPlaying ? "||" : ">", x: centerX - btnSize / 2, action: "toggle" },
+      { label: ">>",  x: centerX + btnSize * 0.5 + btnGap, action: "next" },
+      { label: ">>|", x: centerX + btnSize * 1.5 + btnGap * 2, action: "last" },
+    ];
+
+    for (const btn of buttons) {
+      // Button background
+      ctx.fillStyle = "rgba(255, 255, 255, 0.06)";
+      ctx.fillRect(btn.x, btnY, btnSize, btnSize);
+      ctx.strokeStyle = "rgba(255, 107, 107, 0.3)";
+      ctx.lineWidth = 0.5;
+      ctx.strokeRect(btn.x, btnY, btnSize, btnSize);
+
+      // Button text
+      ctx.fillStyle = "#ff6b6b";
+      ctx.font = "bold 9px system-ui";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.fillText(btn.label, btn.x + btnSize / 2, btnY + btnSize / 2);
+    }
+
+    // Speed selector
+    const speeds = [0.5, 1, 2, 5, 10];
+    const speedX = centerX + btnSize * 3 + btnGap * 3;
+    ctx.fillStyle = "#6b7b8d";
+    ctx.font = "8px system-ui";
+    ctx.textAlign = "left";
+    ctx.fillText("SPEED:", speedX, ctrlY + ctrlH / 2);
+
+    let sx = speedX + 42;
+    for (const spd of speeds) {
+      const isActive = Math.abs(this.replaySpeed - spd) < 0.01;
+      ctx.fillStyle = isActive ? "#ff6b6b" : "rgba(255,255,255,0.3)";
+      ctx.font = isActive ? "bold 9px system-ui" : "9px system-ui";
+      ctx.fillText(spd + "x", sx, ctrlY + ctrlH / 2);
+      sx += 30;
+    }
+
+    // Progress indicator
+    const progressX = x + 10;
+    ctx.fillStyle = "#6b7b8d";
+    ctx.font = "9px system-ui";
+    ctx.textAlign = "left";
+    const total = this.replaySortedEvents.length;
+    const current = Math.max(0, this.replayIndex + 1);
+    ctx.fillText("Event " + current + "/" + total, progressX, ctrlY + ctrlH / 2);
+
+    ctx.textAlign = "left";
+    ctx.textBaseline = "alphabetic";
+    ctx.restore();
+  }
+
+  /** Handle click on replay controls. Returns true if consumed. */
+  handleReplayClick(mx: number, my: number, totalW: number, totalH: number, renderX: number, renderY: number): boolean {
+    const ctrlY = renderY + totalH - this.minimapHeight - this.replayControlsHeight;
+    const ctrlH = this.replayControlsHeight;
+
+    if (my < ctrlY || my > ctrlY + ctrlH) return false;
+
+    const btnSize = 20;
+    const btnGap = 8;
+    const centerX = renderX + totalW / 2;
+    const btnY = ctrlY + (ctrlH - btnSize) / 2;
+
+    const buttons = [
+      { x: centerX - btnSize * 2.5 - btnGap * 2, action: "first" },
+      { x: centerX - btnSize * 1.5 - btnGap, action: "prev" },
+      { x: centerX - btnSize / 2, action: "toggle" },
+      { x: centerX + btnSize * 0.5 + btnGap, action: "next" },
+      { x: centerX + btnSize * 1.5 + btnGap * 2, action: "last" },
+    ];
+
+    for (const btn of buttons) {
+      if (mx >= btn.x && mx <= btn.x + btnSize && my >= btnY && my <= btnY + btnSize) {
+        switch (btn.action) {
+          case "first":
+            this.replayIndex = 0;
+            this.emitReplayEvent();
+            break;
+          case "prev":
+            this.stepBackward();
+            break;
+          case "toggle":
+            if (this.replayIsPlaying) {
+              this.stopReplay();
+            } else {
+              if (this.replayIndex >= this.replaySortedEvents.length - 1) {
+                this.replayIndex = -1;
+              }
+              this.replayIsPlaying = true;
+              this.replayAccum = 0;
+              this.replayLastTime = performance.now();
+              this.replayTick();
+            }
+            break;
+          case "next":
+            this.stepForward();
+            break;
+          case "last":
+            this.replayIndex = this.replaySortedEvents.length - 1;
+            this.emitReplayEvent();
+            break;
+        }
+        return true;
+      }
+    }
+
+    // Speed buttons
+    const speeds = [0.5, 1, 2, 5, 10];
+    const speedX = centerX + btnSize * 3 + btnGap * 3 + 42;
+    let sx = speedX;
+    for (const spd of speeds) {
+      if (mx >= sx - 5 && mx <= sx + 25 && my >= ctrlY && my <= ctrlY + ctrlH) {
+        this.setPlaybackSpeed(spd);
+        return true;
+      }
+      sx += 30;
+    }
+
+    return false;
+  }
+
 }
