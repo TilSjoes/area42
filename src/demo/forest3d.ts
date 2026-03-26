@@ -277,7 +277,7 @@ const NODE_HEIGHT = 10;
 const NODE_DEPTH = 4;
 const LEVEL_SPACING = 60;
 const SIBLING_SPACING = 20;
-const TREE_SPACING = 400;
+const TREE_SPACING = 200;
 
 // Renderer
 const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
@@ -645,7 +645,17 @@ function clearScene(): void {
     });
   }
   treeGroups = [];
+  // Remove CSS2D labels from the DOM
+  for (const lbl of treeLabelObjects) {
+    if (lbl.parent) lbl.parent.remove(lbl);
+    if (lbl.element && lbl.element.parentNode) lbl.element.parentNode.removeChild(lbl.element);
+  }
   treeLabelObjects = [];
+  // Also clear any leftover label divs from the CSS2D renderer
+  const labelContainer = labelRenderer.domElement;
+  while (labelContainer.firstChild) {
+    labelContainer.removeChild(labelContainer.firstChild);
+  }
 
   for (const obj of crossLinkMeshes) {
     scene.remove(obj);
