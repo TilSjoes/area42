@@ -5,13 +5,16 @@
  * simulated DONTPANIC infrastructure activity: git commits, missions,
  * worker tasks, and babelfish dreams.
  *
+ * Now includes a 90-day activity heatmap (7 rows = days of week,
+ * 13 cols = weeks) rendered on a floating panel.
+ *
  * Standalone canvas mode with direct rendering loop.
  */
 
 import { Swimlane } from "../charts/swimlane.js";
 import type { SwimlaneGroup, SwimlaneEvent } from "../charts/swimlane.js";
+import { Heatmap } from "../charts/heatmap.js";
 import { NeonTheme } from "../themes/neon.js";
-import { StatusBar } from "../panels/statusbar.js";
 
 // ============================================================================
 // SETUP
@@ -37,7 +40,7 @@ window.addEventListener("resize", resize);
 const ctx = canvas.getContext("2d")!;
 
 // ============================================================================
-// DATA GENERATION — 90 days of simulated activity
+// DATA GENERATION \u2014 90 days of simulated activity
 // ============================================================================
 
 const NOW = Date.now();
@@ -200,6 +203,52 @@ const groups: SwimlaneGroup[] = [
 ];
 
 // ============================================================================
+// ACTIVITY HEATMAP \u2014 90 days aggregated into 7x13 grid
+// ============================================================================
+
+const heatmap = new Heatmap({
+  rows: 7,
+  cols: 13,
+  cellSize: 14,
+  gap: 2,
+  labels: {
+    rows: ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"],
+    cols: ["W1", "W2", "W3", "W4", "W5", "W6", "W7", "W8", "W9", "W10", "W11", "W12", "W13"],
+  },
+});
+
+// Count all events per day, map to 7x13 grid
+const dailyCounts: number[] = new Array(91).fill(0);
+for (const g of groups) {
+  for (const l of g.lanes) {
+    for (const e of l.events) {
+      const dayIdx = Math.floor((e.start - ORIGIN) / DAY);
+      if (dayIdx >= 0 && dayIdx < 91) {
+        dailyCounts[dayIdx]++;
+      }
+    }
+  }
+}
+const maxCount = Math.max(1, ...dailyCounts);
+
+// Build heatmap data: row = day of week (0=Mon), col = week number
+const hmData: number[][] = [];
+for (let r = 0; r < 7; r++) {
+  hmData.push(new Array(13).fill(0));
+}
+for (let day = 0; day < 91; day++) {
+  const date = new Date(ORIGIN + day * DAY);
+  const dow = (date.getDay() + 6) % 7; // Convert Sun=0 to Mon=0
+  const week = Math.floor(day / 7);
+  if (week < 13) {
+    hmData[dow][week] = dailyCounts[day] / maxCount;
+  }
+}
+heatmap.setData(hmData);
+
+let showHeatmap = true;
+
+// ============================================================================
 // SWIMLANE INSTANCE
 // ============================================================================
 
@@ -237,6 +286,55 @@ function renderTitle(ctx: CanvasRenderingContext2D, w: number): void {
   ctx.restore();
 }
 
+/** Render the heatmap overlay panel */
+function renderHeatmapPanel(ctx: CanvasRenderingContext2D, w: number, h: number): void {
+  if (!showHeatmap) return;
+
+  const panelW = 260;
+  const panelH = 160;
+  const px = w - panelW - 16;
+  const py = 12;
+  const r = 8;
+
+  ctx.save();
+
+  // Glass background
+  ctx.beginPath();
+  ctx.moveTo(px + r, py);
+  ctx.lineTo(px + panelW - r, py);
+  ctx.quadraticCurveTo(px + panelW, py, px + panelW, py + r);
+  ctx.lineTo(px + panelW, py + panelH - r);
+  ctx.quadraticCurveTo(px + panelW, py + panelH, px + panelW - r, py + panelH);
+  ctx.lineTo(px + r, py + panelH);
+  ctx.quadraticCurveTo(px, py + panelH, px, py + panelH - r);
+  ctx.lineTo(px, py + r);
+  ctx.quadraticCurveTo(px, py, px + r, py);
+  ctx.closePath();
+  ctx.fillStyle = NeonTheme.glass(0.82);
+  ctx.fill();
+  ctx.strokeStyle = "rgba(81, 207, 102, 0.25)";
+  ctx.lineWidth = 1;
+  ctx.stroke();
+
+  // Title
+  ctx.fillStyle = "#51cf66";
+  ctx.font = "bold 9px system-ui";
+  ctx.letterSpacing = "1px";
+  ctx.textAlign = "left";
+  ctx.textBaseline = "top";
+  ctx.fillText("ACTIVITY HEATMAP", px + 10, py + 8);
+  ctx.letterSpacing = "0px";
+
+  ctx.fillStyle = NeonTheme.textDim;
+  ctx.font = "8px system-ui";
+  ctx.fillText("90 days", px + panelW - 50, py + 9);
+
+  // Render heatmap
+  heatmap.render(ctx, px + 8, py + 24, panelW - 16, panelH - 34);
+
+  ctx.restore();
+}
+
 // ============================================================================
 // KEYBOARD SHORTCUTS
 // ============================================================================
@@ -253,18 +351,10 @@ document.addEventListener("keydown", (e) => {
     // Last week
     swimlane.setViewRange(NOW - 7 * DAY, NOW + 0.5 * DAY);
   }
+  if (e.key === "h" || e.key === "H") {
+    showHeatmap = !showHeatmap;
+  }
 });
-
-// ============================================================================
-// STATUS BAR
-// ============================================================================
-
-const statusBar = new StatusBar();
-statusBar.set('brand', 'Area42 v0.1.0', { position: 'left', color: '#00d4aa' });
-// stats set below after totalEvents is computed
-
-let tlFrameCount = 0;
-let tlLastFpsTime = performance.now();
 
 // ============================================================================
 // RENDER LOOP
@@ -280,6 +370,7 @@ function frame(): void {
 
   swimlane.render(ctx, 0, 0, w, h);
   renderTitle(ctx, w);
+  renderHeatmapPanel(ctx, w, h);
 
   // Help text bottom-right
   ctx.save();
@@ -287,22 +378,8 @@ function frame(): void {
   ctx.font = "9px system-ui";
   ctx.textAlign = "right";
   ctx.textBaseline = "bottom";
-  ctx.fillText("Scroll: zoom | Drag: pan | F: fit all | T: today | W: week", w - 12, h - 44);
+  ctx.fillText("Scroll: zoom | Drag: pan | F: fit all | T: today | W: week | H: heatmap", w - 12, h - 44);
   ctx.restore();
-
-  // Status bar at bottom
-  const statusBarH = statusBar.getHeight();
-  statusBar.render(ctx, h - statusBarH, w);
-
-  // FPS tracking
-  tlFrameCount++;
-  const fpsNow = performance.now();
-  if (fpsNow - tlLastFpsTime >= 1000) {
-    const fps = Math.round(tlFrameCount * 1000 / (fpsNow - tlLastFpsTime));
-    statusBar.set('stats', 'Events: ' + totalEvents + ' | FPS: ' + fps, { position: 'right' });
-    tlFrameCount = 0;
-    tlLastFpsTime = fpsNow;
-  }
 
   requestAnimationFrame(frame);
 }
@@ -315,7 +392,6 @@ frame();
 
 let totalEvents = 0;
 for (const g of groups) for (const l of g.lanes) totalEvents += l.events.length;
-statusBar.set('stats', 'Events: ' + totalEvents + ' | FPS: 60', { position: 'right' });
 
 console.log(
   "%c Area42 %c Swimlane Timeline ",
@@ -323,5 +399,6 @@ console.log(
   "background:#131a2b;color:#c8d6e5;padding:4px 8px;border-radius:0 4px 4px 0",
 );
 console.log("  " + groups.length + " groups, " + totalEvents + " events across 90 days");
+console.log("  Activity heatmap: 7x13 grid (days of week x weeks)");
 console.log("  Scroll to zoom, drag to pan, click events for details");
-console.log("  Keys: F=fit all, T=today, W=last week");
+console.log("  Keys: F=fit all, T=today, W=last week, H=toggle heatmap");

@@ -6,11 +6,13 @@
  * structured panels with metrics, charts, and data tables.
  *
  * Proves Area42 works for PowerBI/PowerPoint-style dashboards too.
+ * Now with Gauge rings for Trust Index, Compliance, and Risk Posture.
  */
 import { HUD } from "../core/hud.js";
 import { MetricDisplay } from "../panels/metric.js";
 import { TimeSeries } from "../charts/timeseries.js";
 import { Table } from "../panels/table.js";
+import { Gauge } from "../charts/gauge.js";
 
 // --- Embedded mode: no universe background ---
 const hud = new HUD("#hud", {
@@ -22,20 +24,21 @@ const hud = new HUD("#hud", {
 const container = document.getElementById("hud")!;
 container.style.background = "linear-gradient(180deg, #0c1120 0%, #0a0e17 100%)";
 
+// === GAUGES ===
+
+const trustGauge = new Gauge({ value: 82.1, label: "82.1", sublabel: "Trust Index", size: 110 });
+const complianceGauge = new Gauge({ value: 75, label: "75%", sublabel: "Compliance", color: "#ffd43b", size: 110 });
+const riskGauge = new Gauge({ value: 77.8, label: "77.8", sublabel: "Risk Posture", size: 110 });
+
 // === STRATEGIC TIER (C-Level / Board) ===
 
 const strategic = hud.panel({
-  title: "Strategic — C-Level / Board",
+  title: "Strategic \u2014 C-Level / Board",
   position: { x: 20, y: 20 },
-  size: { x: hud.renderer.width - 40, y: 220 },
+  size: { x: hud.renderer.width - 40, y: 260 },
   glass: false,
   titleColor: "#00d4aa",
 });
-
-const trustMetrics = new MetricDisplay({ columns: 3 });
-trustMetrics.set("Trust Index", "82.1", "#00d4aa");
-trustMetrics.set("Compliance", "75%", "#ffd43b");
-trustMetrics.set("Risk Posture", "77.8", "#51cf66");
 
 const compressionMetrics = new MetricDisplay({ columns: 3 });
 compressionMetrics.set("Vertical", "28.4x", "#4dabf7");
@@ -49,22 +52,29 @@ for (let i = 0; i < 30; i++) {
 }
 
 strategic.onContent((ctx, x, y, w, h) => {
-  // Left: Trust Index metrics
-  trustMetrics.render(ctx, x, y, w * 0.4, 60);
+  // Top row: Three gauge rings
+  const gaugeY = y + 10;
+  const gaugeSpacing = w * 0.18;
+  const gaugeStartX = x + gaugeSpacing * 0.6;
 
-  // Middle: Compression metrics
-  compressionMetrics.render(ctx, x + w * 0.42, y, w * 0.35, 60);
+  trustGauge.render(ctx, gaugeStartX, gaugeY + 55);
+  complianceGauge.render(ctx, gaugeStartX + gaugeSpacing, gaugeY + 55);
+  riskGauge.render(ctx, gaugeStartX + gaugeSpacing * 2, gaugeY + 55);
 
-  // Right: Trust trend sparkline
+  // Right side: Compression metrics + trend
+  const rightX = x + w * 0.55;
+  compressionMetrics.render(ctx, rightX, y, w * 0.42, 60);
+
+  // Trust trend sparkline
   ctx.fillStyle = "#6b7b8d";
   ctx.font = "bold 8px system-ui";
   ctx.letterSpacing = "1px";
-  ctx.fillText("TRUST INDEX TREND", x + w * 0.78, y + 8);
+  ctx.fillText("TRUST INDEX TREND", rightX, y + 72);
   ctx.letterSpacing = "0px";
-  trustTrend.render(ctx, x + w * 0.78, y + 14, w * 0.2, 45);
+  trustTrend.render(ctx, rightX, y + 78, w * 0.42, 40);
 
   // Bottom: Coverage bar
-  const barY = y + 80;
+  const barY = y + 130;
   ctx.fillStyle = "#6b7b8d";
   ctx.font = "9px system-ui";
   ctx.fillText("GOVERNANCE COVERAGE", x, barY);
@@ -75,7 +85,6 @@ strategic.onContent((ctx, x, y, w, h) => {
   ctx.fillRect(barX, barY + 14, barW, 16);
   ctx.fillStyle = "#00d4aa";
   ctx.fillRect(barX, barY + 14, barW * 0.7, 16);
-  // Rounded ends
   ctx.fillStyle = "#c8d6e5";
   ctx.font = "bold 10px system-ui";
   ctx.textAlign = "right";
@@ -90,14 +99,14 @@ strategic.onContent((ctx, x, y, w, h) => {
   ctx.fillStyle = "#51cf66";
   ctx.font = "10px system-ui";
   const items = ["project management", "security review meetings", "compliance audit scheduling", "cross-team coordination"];
-  ctx.fillText(items.join("  •  "), x + 75, elimY);
+  ctx.fillText(items.join("  \u2022  "), x + 75, elimY);
 });
 
 // === TACTICAL TIER (Tech Leads / Architects) ===
 
 const tactical = hud.panel({
-  title: "Tactical — Tech Leads / Architects",
-  position: { x: 20, y: 260 },
+  title: "Tactical \u2014 Tech Leads / Architects",
+  position: { x: 20, y: 300 },
   size: { x: hud.renderer.width - 40, y: 200 },
   glass: false,
   titleColor: "#ffd43b",
@@ -204,9 +213,9 @@ tactical.onContent((ctx, x, y, w, h) => {
 // === OPERATIONAL TIER (Developers / Agents) ===
 
 const operational = hud.panel({
-  title: "Operational — Developers / Agents",
-  position: { x: 20, y: 480 },
-  size: { x: hud.renderer.width - 40, y: hud.renderer.height - 500 },
+  title: "Operational \u2014 Developers / Agents",
+  position: { x: 20, y: 520 },
+  size: { x: hud.renderer.width - 40, y: hud.renderer.height - 540 },
   glass: false,
   titleColor: "#ff6b6b",
 });
@@ -321,30 +330,8 @@ const scanStatus = hud.panel({
 scanStatus.onContent((ctx, x, y, w, h) => {
   ctx.fillStyle = "#51cf66";
   ctx.font = "10px system-ui";
-  ctx.fillText("● 04:00 AM • 9 projects", x, y + 4);
+  ctx.fillText("\u25CF 04:00 AM \u2022 9 projects", x, y + 4);
 });
-
-// --- Status Bar ---
-hud.statusBar.set('brand', 'Area42 v0.1.0', { position: 'left', color: '#00d4aa' });
-hud.statusBar.set('stats', 'Panels: 4 | FPS: 60', { position: 'right' });
-
-let govFrameCount = 0;
-let govLastFpsTime = performance.now();
-hud.renderer.onRender((rc) => {
-  govFrameCount++;
-  const now = performance.now();
-  if (now - govLastFpsTime >= 1000) {
-    const fps = Math.round(govFrameCount * 1000 / (now - govLastFpsTime));
-    hud.statusBar.set('stats', 'Panels: 4 | FPS: ' + fps, { position: 'right' });
-    govFrameCount = 0;
-    govLastFpsTime = now;
-  }
-});
-
-// Trust trend live update
-setInterval(() => {
-  trustTrend.push(75 + Math.random() * 10 + 6);
-}, 2000);
 
 console.log(
   "%c Area42 %c Governance Dashboard Demo ",
@@ -352,4 +339,5 @@ console.log(
   "background:#131a2b;color:#c8d6e5;padding:4px 8px;border-radius:0 4px 4px 0",
 );
 console.log("  Three-tier governance: Strategic (C-Level), Tactical (Architects), Operational (Developers)");
+console.log("  Gauge rings: Trust Index (82.1%), Compliance (75%), Risk Posture (77.8%)");
 console.log("  Drag panels by title bars. Resize from corners. Press ? for help.");

@@ -13,6 +13,7 @@ import { MetricDisplay } from "../panels/metric.js";
 import { TimeSeries } from "../charts/timeseries.js";
 import { Table } from "../panels/table.js";
 import { withAlpha } from "../core/color.js";
+import { ToastManager } from "../panels/toast.js";
 
 // --- Embedded mode: no universe background ---
 const hud = new HUD("#hud", {
@@ -22,6 +23,8 @@ const hud = new HUD("#hud", {
 
 const container = document.getElementById("hud")!;
 container.style.background = "linear-gradient(135deg, #0c1120 0%, #0f1628 50%, #0a0e17 100%)";
+
+const toasts = new ToastManager();
 
 const W = hud.renderer.width;
 const H = hud.renderer.height;
@@ -488,6 +491,23 @@ streamPanel.onContent((ctx, x, y, w, h) => {
   streamTable.render(ctx, x, y, w, h);
 });
 
+
+// ============================================================================
+// TOAST OVERLAY (renders on top of everything)
+// ============================================================================
+
+const toastOverlay = hud.panel({
+  title: "Notifications",
+  position: { x: 0, y: 0 },
+  size: { x: W, y: H },
+  glass: false,
+  closable: false,
+});
+toastOverlay.interactive = false;
+toastOverlay.onContent((ctx, x, y, w, h) => {
+  toasts.render(ctx, w, h);
+});
+
 // ============================================================================
 // SIMULATION ENGINE
 // ============================================================================
@@ -583,6 +603,15 @@ function simulateEvent(): void {
     graph.particle("tier-" + tier, "backend-" + backend, { color: backendColors[backend], speed: 0.6, size: 2 });
     graph.pulse("backend-" + backend, backendColors[backend]);
   }, 450);
+
+  // Show toast notification for routing event
+  const toastType = event.status === "OK" ? (tier === "complex" ? "warning" as const : "info" as const) : "error" as const;
+  toasts.show({
+    message: "Routed " + source + " to " + backend + " via Spine [" + tier + "]",
+    type: toastType,
+    duration: 2500,
+    position: "bottom-right",
+  });
 }
 
 function scheduleNext(): void {
@@ -627,4 +656,5 @@ hud.renderer.onRender((rc) => {
   }
 });
 
+console.log("  Toast notifications appear on each routing event");
 console.log("  Drag panels by title bars. Resize from corners. Press ? for help.");

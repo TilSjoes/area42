@@ -18,6 +18,8 @@ import { MetricDisplay } from "../panels/metric.js";
 import { MiniGraph } from "../panels/minigraph.js";
 import { withAlpha } from "../core/color.js";
 import { Breadcrumb } from "../panels/breadcrumb.js";
+import { Tree } from "../graph/tree.js";
+import type { TreeNodeData } from "../graph/tree.js";
 import type { BreadcrumbItem } from "../panels/breadcrumb.js";
 
 // --- Universe mode: full space background ---
@@ -663,6 +665,63 @@ if (area42Ref) {
   };
 }
 
+
+// ============================================================================
+// ORGANIZATION TREE (bottom-right panel)
+// ============================================================================
+
+const orgTree = new Tree({ direction: "top-down", nodeSpacing: 15, levelSpacing: 60, nodeWidth: 110, nodeHeight: 30 });
+orgTree.setData({
+  id: "holding",
+  label: "DONTPANIC Holding",
+  color: "#00d4aa",
+  children: [
+    {
+      id: "bank",
+      label: "BoringBank",
+      color: "#4dabf7",
+      children: [
+        { id: "bank-ops", label: "Operations", color: "#22d3ee" },
+        { id: "bank-compliance", label: "Compliance", color: "#ffd43b" },
+        { id: "bank-risk", label: "Risk & AML", color: "#ff6b6b" },
+      ],
+    },
+    {
+      id: "tech",
+      label: "Tech Division",
+      color: "#a78bfa",
+      children: [
+        { id: "tech-ai", label: "AI / Marvin", color: "#f97316" },
+        { id: "tech-infra", label: "Infrastructure", color: "#51cf66" },
+        { id: "tech-agents", label: "AgentSmith", color: "#22d3ee" },
+      ],
+    },
+    {
+      id: "services",
+      label: "Services",
+      color: "#51cf66",
+      children: [
+        { id: "svc-suits", label: "Suits (Admin)", color: "#ffd43b" },
+        { id: "svc-vale", label: "Vale (Comms)", color: "#a78bfa" },
+      ],
+    },
+  ],
+});
+
+const orgPanel = hud.panel({
+  title: "Organization",
+  position: { x: W - 440, y: H - 320 },
+  size: { x: 420, y: 300 },
+  glass: true,
+  titleColor: "#00d4aa",
+});
+
+orgPanel.onContent((ctx, x, y, w, h) => {
+  // Center the tree in the panel
+  orgTree.setOffset(x + w / 2 - 55, y + 4);
+  orgTree.render(ctx);
+});
+
 // ============================================================================
 // SIMULATE LIVE ACTIVITY
 // ============================================================================
@@ -715,4 +774,5 @@ console.log("  Click a customer node for profile details");
 console.log("  Double-click to expand accounts, then transactions");
 console.log("  Shift+click two nodes to multi-select");
 console.log("  Right-click for context menu (Investigate, Flag, History)");
+console.log("  Organization tree panel in bottom-right corner");
 console.log("  Scroll to zoom, Ctrl+drag to pan. Press ? for help.");
