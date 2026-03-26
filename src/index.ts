@@ -98,3 +98,7 @@ export type { AnalysisResult, PathResult, ClusterResult } from "./core/analysis.
 // Forest
 export { Forest } from "./graph/forest.js";
 export type { ForestTree, ForestLink, ForestOptions, PerspectiveOptions } from "./graph/forest.js";
+
+// Panel3D (optional — requires three.js)
+export { Panel3D } from "./panels/panel3d.js";
+export type { Panel3DOptions } from "./panels/panel3d.js";

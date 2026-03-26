@@ -8,6 +8,14 @@ export default defineConfig({
       name: "Area42",
       fileName: "area42",
     },
+    rollupOptions: {
+      external: ["three"],
+      output: {
+        globals: {
+          three: "THREE",
+        },
+      },
+    },
   },
   server: {
     port: 4242,

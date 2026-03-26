@@ -21,6 +21,7 @@ export interface GraphNodeOptions {
   size?: number;
   shape?: "circle" | "hexagon" | "diamond" | "rect";
   data?: any;
+  mass?: number;
 }
 
 /** Detail data for edge inspection panel */
@@ -64,6 +65,8 @@ export class GraphNode {
   radius: number;
   shape: "circle" | "hexagon" | "diamond" | "rect";
   data: any;
+  /** Node mass — affects physics (heavier = less movement, stronger repulsion) */
+  mass: number;
   /** Pulse animation (0 = no pulse, decays over time) */
   pulseIntensity = 0;
   pulseColor = "#ffffff";
@@ -92,6 +95,7 @@ export class GraphNode {
     this.radius = options.size ?? 20;
     this.shape = options.shape ?? "circle";
     this.data = options.data;
+    this.mass = options.mass ?? 1.0;
   }
 }
 
@@ -499,18 +503,31 @@ export class Graph extends SceneNode {
         ctx.shadowBlur = 0;
       }
 
+      // Mass-adjusted visual radius: mass 1 = normal, mass 3 = 1.4x
+      const renderRadius = node.radius * (0.8 + node.mass * 0.2);
+
+      // Weight ring for heavy nodes (mass > 1.5)
+      if (node.mass > 1.5) {
+        ctx.beginPath();
+        ctx.arc(nx, ny, renderRadius * 1.5, 0, Math.PI * 2);
+        const weightAlpha = Math.min(0.5, (node.mass - 1.5) * 0.25);
+        ctx.strokeStyle = withAlpha(node.color, Math.round(weightAlpha * 255).toString(16).padStart(2, "0"));
+        ctx.lineWidth = 1;
+        ctx.stroke();
+      }
+
       // Node glow
       ctx.shadowColor = node.glow;
       ctx.shadowBlur = 15;
       ctx.fillStyle = withAlpha(node.color, "33");
-      this.drawShape(ctx, nx, ny, node.radius, node.shape);
+      this.drawShape(ctx, nx, ny, renderRadius, node.shape);
       ctx.fill();
 
       // Node body
       ctx.shadowBlur = 8;
       ctx.fillStyle = node.color;
       ctx.globalAlpha = 0.85;
-      this.drawShape(ctx, nx, ny, node.radius * 0.7, node.shape);
+      this.drawShape(ctx, nx, ny, renderRadius * 0.7, node.shape);
       ctx.fill();
 
       // Node border
@@ -518,7 +535,7 @@ export class Graph extends SceneNode {
       ctx.globalAlpha = 1;
       ctx.strokeStyle = node.color;
       ctx.lineWidth = 1.5;
-      this.drawShape(ctx, nx, ny, node.radius, node.shape);
+      this.drawShape(ctx, nx, ny, renderRadius, node.shape);
       ctx.stroke();
 
       // Selection glow ring
@@ -697,12 +714,13 @@ export class Graph extends SceneNode {
         let dist = Math.sqrt(dx * dx + dy * dy);
         if (dist < 1) dist = 1;
 
-        const force = this.repulsionStrength / (dist * dist);
+        // Mass-weighted repulsion: heavier nodes repel more, but move less
+        const force = this.repulsionStrength * (a.mass * b.mass) / (dist * dist);
         const fx = (dx / dist) * force;
         const fy = (dy / dist) * force;
 
-        if (!a.pinned) { a.vx -= fx; a.vy -= fy; }
-        if (!b.pinned) { b.vx += fx; b.vy += fy; }
+        if (!a.pinned) { a.vx -= fx / a.mass; a.vy -= fy / a.mass; }
+        if (!b.pinned) { b.vx += fx / b.mass; b.vy += fy / b.mass; }
 
         // Collision: push apart if overlapping
         const minDist = a.radius + b.radius + 5;
@@ -731,15 +749,15 @@ export class Graph extends SceneNode {
       const fx = (dx / dist) * force;
       const fy = (dy / dist) * force;
 
-      if (!a.pinned) { a.vx += fx; a.vy += fy; }
-      if (!b.pinned) { b.vx -= fx; b.vy -= fy; }
+      if (!a.pinned) { a.vx += fx / a.mass; a.vy += fy / a.mass; }
+      if (!b.pinned) { b.vx -= fx / b.mass; b.vy -= fy / b.mass; }
     }
 
     // Center gravity
     for (const node of nodeArr) {
       if (node.pinned) continue;
-      node.vx -= node.x * this.centerGravity;
-      node.vy -= node.y * this.centerGravity;
+      node.vx -= node.x * this.centerGravity / node.mass;
+      node.vy -= node.y * this.centerGravity / node.mass;
     }
 
     // Gravity wells: parents attract their children
@@ -759,14 +777,14 @@ export class Graph extends SceneNode {
         if (dist < node.wellRadius) {
           // Spring-like: stronger pull when further from ideal orbit distance
           const idealDist = node.wellRadius * 0.5;
-          const force = (dist - idealDist) * node.wellStrength;
-          child.vx -= (dx / dist) * force;
-          child.vy -= (dy / dist) * force;
+          const force = (dist - idealDist) * node.wellStrength * node.mass;
+          child.vx -= (dx / dist) * force / child.mass;
+          child.vy -= (dy / dist) * force / child.mass;
         } else {
-          // Outside well radius: gentle pull back
-          const force = node.wellStrength * 0.5;
-          child.vx += (dx / dist) * force;
-          child.vy += (dy / dist) * force;
+          // Outside well radius: gentle pull back (scaled by parent mass)
+          const force = node.wellStrength * 0.5 * node.mass;
+          child.vx += (dx / dist) * force / child.mass;
+          child.vy += (dy / dist) * force / child.mass;
         }
       }
     }

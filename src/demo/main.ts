@@ -16,6 +16,7 @@ import { TimeSeries } from "../charts/timeseries.js";
 import { MetricDisplay } from "../panels/metric.js";
 import { SSESource } from "../data/source.js";
 import { NeonTheme } from "../themes/neon.js";
+import { Panel3D } from "../panels/panel3d.js";
 import { Table } from "../panels/table.js";
 import { MiniGraph } from "../panels/minigraph.js";
 
@@ -328,6 +329,7 @@ hud.scene.root.add(graph);
 graph.addNode({
   id: "spine",
   label: "Spine",
+  mass: 2.5,
   color: "#f97316",
   glow: "#f97316",
   shape: "hexagon",
@@ -339,6 +341,7 @@ graph.addNode({
 graph.addNode({
   id: "moe",
   label: "MoE (Qwen3.5)",
+  mass: 1.2,
   color: "#22d3ee",
   glow: "#22d3ee",
   shape: "circle",
@@ -372,6 +375,7 @@ graph.addNode({
 graph.addNode({
   id: "gpt52",
   label: "GPT-5.2",
+  mass: 0.8,
   color: "#51cf66",
   glow: "#51cf66",
   shape: "diamond",
@@ -383,6 +387,7 @@ graph.addNode({
 graph.addNode({
   id: "nats",
   label: "NATS",
+  mass: 1.5,
   color: "#ffd43b",
   glow: "#ffd43b",
   shape: "rect",
@@ -394,6 +399,7 @@ graph.addNode({
 graph.addNode({
   id: "agentsmith",
   label: "AgentSmith",
+  mass: 2.0,
   color: "#4dabf7",
   glow: "#4dabf7",
   shape: "hexagon",
@@ -702,6 +708,50 @@ function handleRouteEvent(tier: string, backend: string, totalMs?: number, token
     setTimeout(() => graph.pulse("nats", "#ffd43b"), 500);
   }
 }
+
+
+// --- 3D Panel: rotating cube ---
+const cube3d = new Panel3D({
+  title: "3D VIEW",
+  position: { x: 20, y: 400 },
+  size: { x: 220, y: 200 },
+  glass: true,
+  color: "rgba(123, 104, 238, 0.15)",
+  titleColor: "#a78bfa",
+  compact: true,
+  setup: (scene, camera, THREE) => {
+    // Create a wireframe cube with neon edges
+    const geometry = new (THREE as any).BoxGeometry(1.2, 1.2, 1.2);
+    const edges = new (THREE as any).EdgesGeometry(geometry);
+    const material = new (THREE as any).LineBasicMaterial({ color: 0x7b68ee, linewidth: 2 });
+    const wireframe = new (THREE as any).LineSegments(edges, material);
+    wireframe.name = "cube";
+    scene.add(wireframe);
+
+    // Add a smaller inner cube
+    const innerGeo = new (THREE as any).BoxGeometry(0.6, 0.6, 0.6);
+    const innerEdges = new (THREE as any).EdgesGeometry(innerGeo);
+    const innerMat = new (THREE as any).LineBasicMaterial({ color: 0x22d3ee, linewidth: 1 });
+    const innerWire = new (THREE as any).LineSegments(innerEdges, innerMat);
+    innerWire.name = "inner";
+    scene.add(innerWire);
+
+    camera.position.set(0, 0, 3);
+  },
+  animate: (scene, _camera, dt) => {
+    const cube = scene.getObjectByName("cube");
+    const inner = scene.getObjectByName("inner");
+    if (cube) {
+      cube.rotation.x += dt * 0.5;
+      cube.rotation.y += dt * 0.7;
+    }
+    if (inner) {
+      inner.rotation.x -= dt * 0.8;
+      inner.rotation.z += dt * 0.6;
+    }
+  },
+});
+hud.scene.root.add(cube3d);
 
 // --- Simulation fallback ---
 const tierWeights = [0.15, 0.55, 0.30];

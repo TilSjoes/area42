@@ -132,6 +132,8 @@ const graph = new Graph({ id: "investigation", size: { x: W, y: H } });
 customers.forEach((c, i) => {
   const angle = (i / customers.length) * Math.PI * 2 - Math.PI / 2;
   const radius = 200;
+  // Mass = risk score mapped to 0.8-2.5 range (higher risk = heavier = more anchored)
+  const riskMass = 0.8 + (c.riskScore / 100) * 1.7;
   const n = graph.addNode({
     id: c.id,
     label: c.name,
@@ -139,6 +141,7 @@ customers.forEach((c, i) => {
     color: c.color,
     shape: "hexagon",
     size: 30,
+    mass: riskMass,
     data: c,
   });
   n.pinned = false;
