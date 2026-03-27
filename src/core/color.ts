@@ -5,9 +5,16 @@
 
 /** Convert any CSS color + hex alpha suffix to a valid CSS color */
 export function withAlpha(color: string, hexAlpha: string): string {
-  // Hex colors: just append
+  // Hex colors: strip existing alpha if present, then append
   if (color.startsWith("#")) {
-    return color + hexAlpha;
+    // #RGB -> #RRGGBB first
+    let hex = color;
+    if (hex.length === 4) {
+      hex = "#" + hex[1]+hex[1] + hex[2]+hex[2] + hex[3]+hex[3];
+    }
+    // Take only the first 7 chars (#RRGGBB), drop any existing alpha
+    const base = hex.slice(0, 7);
+    return base + hexAlpha.slice(0, 2);
   }
   // rgba/rgb: replace or add alpha
   if (color.startsWith("rgb")) {
