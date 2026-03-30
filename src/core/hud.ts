@@ -814,7 +814,7 @@ child.showTooltip(hitNode, point.x, point.y);
   private buildPanelContextMenu(panel: Panel): MenuItem[] {
     return [
       { label: panel.collapsed ? "Expand" : "Collapse", icon: panel.collapsed ? "▼" : "▲", action: () => { panel.collapsed = !panel.collapsed; } },
-{ label: panel.minimized ? "Restore" : "Minimize", icon: panel.minimized ? "u25a1" : "u2014", action: () => { if (panel.minimized) this.restoreFromDock(panel); else this.minimizePanel(panel); } },
+{ label: panel.minimized ? "Restore" : "Minimize", icon: panel.minimized ? "□" : "—", action: () => { if (panel.minimized) this.restoreFromDock(panel); else this.minimizePanel(panel); } },
       { label: "Close", icon: "×", shortcut: "Del", action: () => { if (typeof (panel as any).onCloseCallback === "function") { (panel as any).onCloseCallback(); } else { panel.visible = false; } } },
       { label: "", separator: true, action: () => {} },
       { label: "Reset Position", icon: "↺", action: () => { panel.position.x = 50; panel.position.y = 50; } },

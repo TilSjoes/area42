@@ -102,3 +102,7 @@ export type { ForestTree, ForestLink, ForestOptions, PerspectiveOptions } from "
 // Panel3D (optional — requires three.js)
 export { Panel3D } from "./panels/panel3d.js";
 export type { Panel3DOptions } from "./panels/panel3d.js";
+
+// Interactive Controls
+export { Knob, Slider, Toggle, InputField, wireControls } from "./interactions/controls.js";
+export type { KnobOptions, SliderOptions, ToggleOptions, InputFieldOptions } from "./interactions/controls.js";

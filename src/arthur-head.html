@@ -1,0 +1,239 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Arthur Head — Animation Test</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      background: #0a0a1a;
+      color: #fff;
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      overflow: hidden;
+    }
+    #canvas-container {
+      position: fixed;
+      top: 0; left: 0;
+      width: 100vw; height: 100vh;
+    }
+    #controls {
+      position: fixed;
+      bottom: 20px;
+      left: 50%;
+      transform: translateX(-50%);
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      justify-content: center;
+      z-index: 10;
+      padding: 12px 16px;
+      background: rgba(10,10,26,0.85);
+      border-radius: 12px;
+      border: 1px solid rgba(255,255,255,0.1);
+      backdrop-filter: blur(10px);
+    }
+    .anim-btn {
+      padding: 8px 16px;
+      border: 1px solid rgba(128,0,255,0.4);
+      border-radius: 8px;
+      background: rgba(128,0,255,0.15);
+      color: #ccc;
+      cursor: pointer;
+      font-size: 13px;
+      transition: all 0.2s;
+    }
+    .anim-btn:hover { background: rgba(128,0,255,0.3); color: #fff; }
+    .anim-btn.active {
+      background: rgba(128,0,255,0.5);
+      color: #fff;
+      border-color: rgba(128,0,255,0.8);
+      box-shadow: 0 0 12px rgba(128,0,255,0.4);
+    }
+    #info {
+      position: fixed;
+      top: 20px;
+      left: 50%;
+      transform: translateX(-50%);
+      font-size: 14px;
+      color: rgba(255,255,255,0.5);
+      z-index: 10;
+    }
+    #loading {
+      position: fixed;
+      top: 50%; left: 50%;
+      transform: translate(-50%, -50%);
+      font-size: 18px;
+      color: rgba(128,0,255,0.8);
+      z-index: 20;
+    }
+  </style>
+</head>
+<body>
+  <div id="canvas-container"></div>
+  <div id="info">Arthur Head — Drag to orbit, scroll to zoom</div>
+  <div id="loading">Loading model...</div>
+  <div id="controls"></div>
+
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
+      "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"
+    }
+  }
+  </script>
+
+  <script type="module">
+    import * as THREE from 'three';
+    import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+    import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+    // Scene setup
+    const scene = new THREE.Scene();
+    const camera = new THREE.PerspectiveCamera(35, window.innerWidth / window.innerHeight, 0.1, 100);
+    camera.position.set(0, 0.15, 0.6);
+
+    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    renderer.toneMappingExposure = 1.2;
+    document.getElementById('canvas-container').appendChild(renderer.domElement);
+
+    // Controls
+    const controls = new OrbitControls(camera, renderer.domElement);
+    controls.target.set(0, 0.08, 0);
+    controls.enableDamping = true;
+    controls.dampingFactor = 0.05;
+    controls.minDistance = 0.3;
+    controls.maxDistance = 2;
+    controls.update();
+
+    // Lighting
+    const ambient = new THREE.AmbientLight(0x404060, 0.8);
+    scene.add(ambient);
+
+    const key = new THREE.DirectionalLight(0xffffff, 1.5);
+    key.position.set(1, 1, 1);
+    scene.add(key);
+
+    const fill = new THREE.DirectionalLight(0x8080ff, 0.6);
+    fill.position.set(-1, 0.5, 0.5);
+    scene.add(fill);
+
+    const rim = new THREE.DirectionalLight(0xff80ff, 0.8);
+    rim.position.set(0, 0.5, -1);
+    scene.add(rim);
+
+    // Background: subtle gradient
+    const bgTexture = new THREE.DataTexture(
+      new Uint8Array([10,10,26,255, 10,10,26,255, 20,10,40,255, 30,15,50,255]),
+      1, 4, THREE.RGBAFormat
+    );
+    bgTexture.needsUpdate = true;
+    scene.background = new THREE.Color(0x0a0a1a);
+
+    // Load model
+    let mixer = null;
+    let actions = {};
+    let activeAction = null;
+
+    const loader = new GLTFLoader();
+
+    // Try relative path first (when served from area42), fallback to absolute
+    const modelPaths = [
+      '../assets/arthur_head_animated.glb',
+      '/home/arthur/projects/max-headroom/arthur_head_animated.glb',
+    ];
+
+    async function loadModel() {
+      for (const path of modelPaths) {
+        try {
+          const gltf = await new Promise((resolve, reject) => {
+            loader.load(path, resolve, undefined, reject);
+          });
+          return gltf;
+        } catch (e) {
+          console.log(`Failed to load ${path}:`, e.message);
+        }
+      }
+      throw new Error('Could not load model from any path');
+    }
+
+    loadModel().then((gltf) => {
+      const model = gltf.scene;
+      scene.add(model);
+
+      // Center the model
+      const box = new THREE.Box3().setFromObject(model);
+      const center = box.getCenter(new THREE.Vector3());
+      model.position.sub(center);
+      model.position.y += center.y; // keep vertical centering
+
+      // Setup animations
+      mixer = new THREE.AnimationMixer(model);
+      const controlsDiv = document.getElementById('controls');
+
+      gltf.animations.forEach((clip, i) => {
+        const action = mixer.clipAction(clip);
+        actions[clip.name] = action;
+
+        const btn = document.createElement('button');
+        btn.className = 'anim-btn';
+        btn.textContent = clip.name;
+        btn.onclick = () => playAnimation(clip.name);
+        controlsDiv.appendChild(btn);
+      });
+
+      // Auto-play Idle
+      if (actions['Idle']) {
+        playAnimation('Idle');
+      } else if (gltf.animations.length > 0) {
+        playAnimation(gltf.animations[0].name);
+      }
+
+      document.getElementById('loading').style.display = 'none';
+    }).catch((err) => {
+      document.getElementById('loading').textContent = 'Failed to load model: ' + err.message;
+      console.error(err);
+    });
+
+    function playAnimation(name) {
+      const action = actions[name];
+      if (!action) return;
+
+      // Crossfade from current
+      if (activeAction && activeAction !== action) {
+        activeAction.fadeOut(0.3);
+      }
+
+      action.reset().fadeIn(0.3).play();
+      activeAction = action;
+
+      // Update button states
+      document.querySelectorAll('.anim-btn').forEach(btn => {
+        btn.classList.toggle('active', btn.textContent === name);
+      });
+    }
+
+    // Animation loop
+    const clock = new THREE.Clock();
+    function animate() {
+      requestAnimationFrame(animate);
+      const delta = clock.getDelta();
+      if (mixer) mixer.update(delta);
+      controls.update();
+      renderer.render(scene, camera);
+    }
+    animate();
+
+    // Resize
+    window.addEventListener('resize', () => {
+      camera.aspect = window.innerWidth / window.innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(window.innerWidth, window.innerHeight);
+    });
+  </script>
+</body>
+</html>
