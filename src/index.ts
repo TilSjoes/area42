@@ -103,6 +103,10 @@ export type { ForestTree, ForestLink, ForestOptions, PerspectiveOptions } from "
 export { Panel3D } from "./panels/panel3d.js";
 export type { Panel3DOptions } from "./panels/panel3d.js";
 
-// Interactive Controls
+// Interactive Controls (canvas-rendered — legacy, prefer Panel Controls)
 export { Knob, Slider, Toggle, InputField, wireControls } from "./interactions/controls.js";
 export type { KnobOptions, SliderOptions, ToggleOptions, InputFieldOptions } from "./interactions/controls.js";
+
+// Panel Controls (HTML overlay — recommended for all interactive elements)
+export { ControlManager } from "./interactions/panel-controls.js";
+export type { ButtonControl, RadioGroupControl, SliderControl, ToggleControl, InputControl, PanelControl } from "./interactions/panel-controls.js";
