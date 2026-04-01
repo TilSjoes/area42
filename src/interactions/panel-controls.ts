@@ -373,7 +373,7 @@ export class ControlManager {
       const btn = document.createElement("button");
       btn.className = "a42-radio-btn";
       btn.textContent = label;
-      if (i === opts.value ?? 0) btn.classList.add("active");
+      if (i === opts.value)
       wrap.appendChild(btn);
       buttons.push(btn);
     });
