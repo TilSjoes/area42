@@ -85,7 +85,6 @@ export class HUD {
   private analysisResult: AnalysisResult | null = null;
   private analysisPanel: Panel | null = null;
 
-  // Graph panning state
   // Panel dragging lock state
   private panelsLocked: boolean = true;
 
@@ -1125,20 +1124,9 @@ child.showTooltip(hitNode, point.x, point.y);
     ctx.restore();
   }
 
-  /** Destroy the HUD */
-  destroy() {
-    this.renderer.destroy();
+  // Public API for lock state
+  set panelsLockedState(value: boolean) {
+    this.panelsLocked = value;
+    localStorage.setItem('a42-panels-locked', String(value));
   }
 }
-
-
-
-  // Public API for lock state
-  get panelsLockedState(): boolean { return this.panelsLocked; }
-  set panelsLockedState(value: boolean) { 
-    this.panelsLocked = value;
-    // Update localStorage
-    try {
-      localStorage.setItem('a42-panels-locked', value ? 'true' : 'false');
-    } catch (e) {}
-  }
