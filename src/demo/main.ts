@@ -991,3 +991,42 @@ console.log("  Scroll inside detail panels with mouse wheel.");
 console.log("  Click X to close a detail panel, or click the same node again.");
 console.log("  Double-click graph nodes to expand/collapse drill-down children.");
 console.log("  Live SSE from AgentSmith with simulation fallback.");
+// --- Panel lock toggle ---
+function initPanelLock() {
+  const lockBtn = document.getElementById('panel-lock-toggle') as HTMLDivElement;
+  if (!lockBtn) return;
+
+  // Sync button state with HUD
+  const syncButton = () => {
+    const locked = hud.panelsLockedState;
+    lockBtn.textContent = locked ? '&#x1F512;' : '&#x1F513;';
+    lockBtn.classList.toggle('locked', locked);
+  };
+
+  // Listen for HUD lock state changes
+  let lastLocked = hud.panelsLockedState;
+  const lockInterval = setInterval(() => {
+    if (hud.panelsLockedState !== lastLocked) {
+      syncButton();
+      lastLocked = hud.panelsLockedState;
+    }
+  }, 100);
+
+  // Button click handler
+  lockBtn.addEventListener('click', () => {
+    hud.panelsLockedState = !hud.panelsLockedState;
+    lastLocked = hud.panelsLockedState;
+    syncButton();
+    clearInterval(lockInterval);
+  });
+
+  // Initial sync
+  syncButton();
+}
+
+// Initialize on DOM ready
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', initPanelLock);
+} else {
+  initPanelLock();
+}

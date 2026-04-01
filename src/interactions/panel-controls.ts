@@ -16,7 +16,7 @@
 
 import { NeonTheme } from "../themes/neon.js";
 
-// ─── CSS Injection ──────────────────────────────────────────────
+// ───────── CSS Injection ─────────────────────────────────────────────
 
 let cssInjected = false;
 
@@ -39,7 +39,7 @@ function injectCSS() {
       font-family: system-ui, -apple-system, sans-serif;
     }
 
-    /* ── Button ── */
+    /* ─── Button ─── */
     .a42-btn {
       padding: 5px 12px;
       border: 1px solid rgba(0,212,170,0.3);
@@ -60,7 +60,7 @@ function injectCSS() {
     .a42-btn.danger:hover { background: rgba(255,107,107,0.15); }
     .a42-btn.warning { color: #ffd43b; border-color: rgba(255,212,59,0.3); background: rgba(255,212,59,0.08); }
 
-    /* ── Radio Group ── */
+    /* ─── Radio Group ─── */
     .a42-radio-group {
       display: flex;
       gap: 0;
@@ -89,7 +89,7 @@ function injectCSS() {
       box-shadow: inset 0 0 10px rgba(0,212,170,0.1);
     }
 
-    /* ── Slider ── */
+    /* ─── Slider ─── */
     .a42-slider-wrap {
       display: flex;
       flex-direction: column;
@@ -138,7 +138,7 @@ function injectCSS() {
       box-shadow: 0 0 8px rgba(0,212,170,0.5);
     }
 
-    /* ── Toggle ── */
+    /* ─── Toggle ─── */
     .a42-toggle-wrap {
       display: flex;
       align-items: center;
@@ -179,7 +179,7 @@ function injectCSS() {
     }
     .a42-toggle-track.on + .a42-toggle-label { color: #c8d6e5; }
 
-    /* ── Input ── */
+    /* ─── Input ─── */
     .a42-input {
       background: rgba(255,255,255,0.04);
       border: 1px solid rgba(255,255,255,0.1);
@@ -197,21 +197,28 @@ function injectCSS() {
     }
     .a42-input::placeholder { color: rgba(107,123,141,0.5); }
 
-    /* ── Label ── */
-    .a42-label {
-      font-size: 8px;
-      color: #6b7b8d;
-      font-weight: 600;
-      text-transform: uppercase;
-      letter-spacing: 0.08em;
-      margin-bottom: 2px;
+    /* ─── Lock Icon Button ─── */
+    .a42-lock-btn {
+      padding: 4px 8px;
+      border: 1px solid rgba(123,104,238,0.3);
+      background: rgba(123,104,238,0.08);
+      color: #7b68ee;
+      font-size: 12px;
+      cursor: pointer;
+      border-radius: 4px;
+      transition: all 0.15s;
+      display: flex;
+      align-items: center;
+      justify-content: center;
     }
+    .a42-lock-btn:hover { background: rgba(123,104,238,0.15); border-color: rgba(123,104,238,0.5); }
+    .a42-lock-btn.locked { background: rgba(123,104,238,0.2); color: #a890ee; border-color: rgba(123,104,238,0.6); }
   `;
   document.head.appendChild(style);
 }
 
 
-// ─── Types ──────────────────────────────────────────────────────
+// ───────── Types ───────────────────────────────────────────────────
 
 interface ControlBase {
   element: HTMLElement;
@@ -260,7 +267,7 @@ export interface InputControl extends ControlBase {
 export type PanelControl = ButtonControl | RadioGroupControl | SliderControl | ToggleControl | InputControl;
 
 
-// ─── Control Manager ────────────────────────────────────────────
+// ───────── Control Manager ─────────────────────────────────────────
 
 /**
  * Manages HTML overlay controls anchored to Area42 panels.
@@ -311,7 +318,7 @@ export class ControlManager {
     this.animId = requestAnimationFrame(tick);
   }
 
-  // ── Button ──
+  // ─── Button ───
 
   button(panel: any, opts: {
     x: number; y: number;
@@ -346,7 +353,7 @@ export class ControlManager {
     return control;
   }
 
-  // ── Radio Group ──
+  // ─── Radio Group ───
 
   radioGroup(panel: any, opts: {
     x: number; y: number;
@@ -356,176 +363,147 @@ export class ControlManager {
     onChange?: (index: number, label: string) => void;
   }): RadioGroupControl {
     const div = this.getOrCreatePanelContainer(panel);
-    const group = document.createElement("div");
-    group.className = "a42-control a42-radio-group";
-    group.style.left = opts.x + "px";
-    group.style.top = opts.y + "px";
+    const wrap = document.createElement("div");
+    wrap.className = "a42-control a42-radio-group";
+    wrap.style.left = opts.x + "px";
+    wrap.style.top = opts.y + "px";
 
     const buttons: HTMLButtonElement[] = [];
-    const colors = opts.colors || [];
-
     opts.options.forEach((label, i) => {
       const btn = document.createElement("button");
       btn.className = "a42-radio-btn";
       btn.textContent = label;
-      btn.addEventListener("click", () => {
-        control.value = i;
-        buttons.forEach((b, j) => b.classList.toggle("active", j === i));
-        if (colors[i]) {
-          buttons[i].style.color = colors[i];
-          buttons[i].style.background = `${colors[i]}22`;
-          buttons[i].style.boxShadow = `inset 0 0 10px ${colors[i]}15`;
-        }
-        control.onChange?.(i, label);
-      });
+      if (i === opts.value ?? 0) btn.classList.add("active");
+      wrap.appendChild(btn);
       buttons.push(btn);
-      group.appendChild(btn);
     });
-
-    div.appendChild(group);
 
     const control: RadioGroupControl = {
       type: "radioGroup",
-      element: group,
+      element: wrap,
       panel,
       offset: { x: opts.x, y: opts.y },
       value: opts.value ?? 0,
       onChange: opts.onChange || null,
       setValue: (index: number) => {
         control.value = index;
-        buttons.forEach((b, j) => {
-          b.classList.toggle("active", j === index);
-          if (j === index && colors[index]) {
-            b.style.color = colors[index];
-            b.style.background = `${colors[index]}22`;
-          } else {
-            b.style.color = "";
-            b.style.background = "";
-            b.style.boxShadow = "";
-          }
-        });
-      },
-      destroy: () => { group.remove(); this.removeControl(control); },
-    };
-
-    // Set initial value
-    control.setValue(control.value);
-    this.controls.push(control);
-    return control;
-  }
-
-  // ── Slider ──
-
-  slider(panel: any, opts: {
-    x: number; y: number; width?: number;
-    min?: number; max?: number; step?: number;
-    value?: number;
-    label?: string;
-    unit?: string;
-    color?: string;
-    onChange?: (value: number, displayValue: number) => void;
-  }): SliderControl {
-    const div = this.getOrCreatePanelContainer(panel);
-    const min = opts.min ?? 0;
-    const max = opts.max ?? 100;
-    const step = opts.step ?? 1;
-    const width = opts.width ?? 180;
-    const color = opts.color || "#00d4aa";
-
-    const wrap = document.createElement("div");
-    wrap.className = "a42-control a42-slider-wrap";
-    wrap.style.left = opts.x + "px";
-    wrap.style.top = opts.y + "px";
-    wrap.style.width = width + "px";
-
-    const header = document.createElement("div");
-    header.className = "a42-slider-header";
-    const labelSpan = document.createElement("span");
-    labelSpan.textContent = opts.label || "";
-    const valueSpan = document.createElement("span");
-    valueSpan.className = "a42-slider-value";
-    valueSpan.style.color = color;
-    header.appendChild(labelSpan);
-    header.appendChild(valueSpan);
-
-    const input = document.createElement("input");
-    input.type = "range";
-    input.className = "a42-slider";
-    input.min = String(min);
-    input.max = String(max);
-    input.step = String(step);
-    input.value = String(opts.value ?? min);
-    input.style.accentColor = color;
-
-    // Apply color to thumb via CSS custom property
-    input.style.setProperty("--thumb-color", color);
-
-    wrap.appendChild(header);
-    wrap.appendChild(input);
-    div.appendChild(wrap);
-
-    function updateDisplay() {
-      const dv = Number(input.value);
-      const unit = opts.unit || "";
-      valueSpan.textContent = (Number.isInteger(dv) ? String(dv) : dv.toFixed(1)) + unit;
-    }
-    updateDisplay();
-
-    const control: SliderControl = {
-      type: "slider",
-      element: wrap,
-      panel,
-      offset: { x: opts.x, y: opts.y },
-      get value() { return (Number(input.value) - min) / (max - min); },
-      get displayValue() { return Number(input.value); },
-      onChange: opts.onChange || null,
-      setValue: (normalized: number) => {
-        input.value = String(min + normalized * (max - min));
-        updateDisplay();
+        buttons.forEach((b, i) => b.classList.toggle("active", i === index));
+        opts.onChange?.(index, opts.options[index]);
       },
       destroy: () => { wrap.remove(); this.removeControl(control); },
     };
 
-    input.addEventListener("input", () => {
-      updateDisplay();
-      control.onChange?.(control.value, control.displayValue);
+    buttons.forEach((btn, i) => {
+      btn.addEventListener("click", () => control.setValue(i));
     });
 
     this.controls.push(control);
     return control;
   }
 
-  // ── Toggle ──
+  // ─── Slider ───
+
+  slider(panel: any, opts: {
+    x: number; y: number;
+    min: number;
+    max: number;
+    step?: number;
+    label?: string;
+    value?: number;
+    onChange?: (value: number, displayValue: number) => void;
+  }): SliderControl {
+    const div = this.getOrCreatePanelContainer(panel);
+    const wrap = document.createElement("div");
+    wrap.className = "a42-control a42-slider-wrap";
+    wrap.style.left = opts.x + "px";
+    wrap.style.top = opts.y + "px";
+
+    if (opts.label) {
+      const header = document.createElement("div");
+      header.className = "a42-slider-header";
+      header.innerHTML = `<span>${opts.label}</span><span class="a42-slider-value">${opts.value ?? opts.min}</span>`;
+      wrap.appendChild(header);
+    }
+
+    const input = document.createElement("input");
+    input.type = "range";
+    input.min = opts.min.toString();
+    input.max = opts.max.toString();
+    input.step = (opts.step ?? 1).toString();
+    input.value = (opts.value ?? opts.min).toString();
+    input.className = "a42-slider";
+    wrap.appendChild(input);
+
+    const control: SliderControl = {
+      type: "slider",
+      element: wrap,
+      panel,
+      offset: { x: opts.x, y: opts.y },
+      value: opts.value ?? opts.min,
+      displayValue: opts.value ?? opts.min,
+      onChange: opts.onChange || null,
+      setValue: (normalized: number) => {
+        const value = opts.min + normalized * (opts.max - opts.min);
+        input.value = value.toString();
+        control.value = value;
+        control.displayValue = value;
+        if (opts.label) {
+          const header = wrap.querySelector(".a42-slider-header");
+          if (header) {
+            const valueEl = header.querySelector(".a42-slider-value");
+            if (valueEl) valueEl.textContent = value.toFixed(1);
+          }
+        }
+        opts.onChange?.(value, value);
+      },
+      destroy: () => { wrap.remove(); this.removeControl(control); },
+    };
+
+    input.addEventListener("input", (e) => {
+      const value = parseFloat((e.target as HTMLInputElement).value);
+      control.value = value;
+      control.displayValue = value;
+      if (opts.label) {
+        const header = wrap.querySelector(".a42-slider-header");
+        if (header) {
+          const valueEl = header.querySelector(".a42-slider-value");
+          if (valueEl) valueEl.textContent = value.toFixed(1);
+        }
+      }
+      opts.onChange?.(value, value);
+    });
+
+    this.controls.push(control);
+    return control;
+  }
+
+  // ─── Toggle ───
 
   toggle(panel: any, opts: {
     x: number; y: number;
     label?: string;
     value?: boolean;
-    color?: string;
     onChange?: (value: boolean) => void;
   }): ToggleControl {
     const div = this.getOrCreatePanelContainer(panel);
-    const color = opts.color || "#00d4aa";
-
     const wrap = document.createElement("div");
     wrap.className = "a42-control a42-toggle-wrap";
     wrap.style.left = opts.x + "px";
     wrap.style.top = opts.y + "px";
 
     const track = document.createElement("div");
-    track.className = "a42-toggle-track";
-
+    track.className = `a42-toggle-track ${opts.value ? "on" : ""}`;
     const thumb = document.createElement("div");
     thumb.className = "a42-toggle-thumb";
     track.appendChild(thumb);
-
-    const label = document.createElement("span");
-    label.className = "a42-toggle-label";
-    label.textContent = opts.label || "";
-
     wrap.appendChild(track);
-    wrap.appendChild(label);
-    div.appendChild(wrap);
+
+    if (opts.label) {
+      const label = document.createElement("span");
+      label.className = "a42-toggle-label";
+      label.textContent = opts.label;
+      wrap.appendChild(label);
+    }
 
     const control: ToggleControl = {
       type: "toggle",
@@ -537,78 +515,125 @@ export class ControlManager {
       setValue: (on: boolean) => {
         control.value = on;
         track.classList.toggle("on", on);
+        opts.onChange?.(on);
       },
       destroy: () => { wrap.remove(); this.removeControl(control); },
     };
 
-    control.setValue(control.value);
-
-    wrap.addEventListener("click", () => {
-      control.value = !control.value;
-      track.classList.toggle("on", control.value);
-      control.onChange?.(control.value);
-    });
-
+    wrap.addEventListener("click", () => control.setValue(!control.value));
     this.controls.push(control);
     return control;
   }
 
-  // ── Input ──
+  // ─── Input ───
 
   input(panel: any, opts: {
-    x: number; y: number; width?: number;
+    x: number; y: number;
     placeholder?: string;
-    label?: string;
     value?: string;
-    onChange?: (value: string) => void;
     onSubmit?: (value: string) => void;
+    onChange?: (value: string) => void;
   }): InputControl {
     const div = this.getOrCreatePanelContainer(panel);
-    const width = opts.width ?? 200;
-
-    const wrap = document.createElement("div");
-    wrap.className = "a42-control";
-    wrap.style.left = opts.x + "px";
-    wrap.style.top = opts.y + "px";
-
-    if (opts.label) {
-      const lbl = document.createElement("div");
-      lbl.className = "a42-label";
-      lbl.textContent = opts.label;
-      wrap.appendChild(lbl);
-    }
-
     const input = document.createElement("input");
     input.type = "text";
     input.className = "a42-input";
-    input.style.width = width + "px";
-    input.placeholder = opts.placeholder || "";
-    input.value = opts.value || "";
-    wrap.appendChild(input);
-    div.appendChild(wrap);
+    input.placeholder = opts.placeholder ?? "";
+    input.value = opts.value ?? "";
+    input.style.left = opts.x + "px";
+    input.style.top = opts.y + "px";
+    div.appendChild(input);
 
     const control: InputControl = {
       type: "input",
-      element: wrap,
+      element: input,
       panel,
       offset: { x: opts.x, y: opts.y },
-      get value() { return input.value; },
+      value: opts.value ?? "",
       onChange: opts.onChange || null,
       onSubmit: opts.onSubmit || null,
-      clear: () => { input.value = ""; },
-      destroy: () => { wrap.remove(); this.removeControl(control); },
+      clear: () => {
+        input.value = "";
+        control.value = "";
+      },
+      destroy: () => { input.remove(); this.removeControl(control); },
     };
 
-    input.addEventListener("input", () => control.onChange?.(input.value));
+    input.addEventListener("input", (e) => {
+      control.value = (e.target as HTMLInputElement).value;
+      opts.onChange?.(control.value);
+    });
+
     input.addEventListener("keydown", (e) => {
-      if (e.key === "Enter") control.onSubmit?.(input.value);
+      if (e.key === "Enter") {
+        opts.onSubmit?.(control.value);
+      }
     });
 
     this.controls.push(control);
     return control;
   }
 
-  // ── Cleanup ──
+  // ─── Lock Toggle ───
+
+  /** Add a lock/unlock toggle button to a panel header */
+  lockToggle(panel: any, opts: {
+    x: number;
+    y: number;
+    onChange?: (locked: boolean) => void;
+  }): ButtonControl {
+    const div = this.getOrCreatePanelContainer(panel);
+    const btn = document.createElement("button");
+    btn.className = "a42-control a42-lock-btn locked";
+    btn.innerHTML = "&#x1F512;"; // Lock icon
+    btn.style.left = opts.x + "px";
+    btn.style.top = opts.y + "px";
+    div.appendChild(btn);
+
+    // Load saved state from localStorage
+    let locked = true; // Default locked
+    try {
+      const saved = localStorage.getItem('a42-panels-locked');
+      if (saved !== null) locked = saved !== 'false';
+    } catch (e) {
+      // localStorage unavailable
+    }
+
+    // Update button appearance
+    const updateAppearance = () => {
+      btn.textContent = locked ? "&#x1F512;" : "&#x1F513;"; // Lock/Unlock icon
+      btn.classList.toggle("locked", locked);
+    };
+    updateAppearance();
+
+    const control: ButtonControl = {
+      type: "button",
+      element: btn,
+      panel,
+      offset: { x: opts.x, y: opts.y },
+      onClick: null,
+      setText: (text: string) => { btn.innerHTML = text; },
+      setLoading: (loading: boolean) => {
+        btn.style.opacity = loading ? "0.6" : "1";
+        btn.style.pointerEvents = loading ? "none" : "auto";
+      },
+      destroy: () => { btn.remove(); this.removeControl(control); },
+    };
+
+    btn.addEventListener("click", () => {
+      locked = !locked;
+      try {
+        localStorage.setItem('a42-panels-locked', locked ? 'true' : 'false');
+      } catch (e) {
+        // localStorage unavailable
+      }
+      updateAppearance();
+      opts.onChange?.(locked);
+    });
+
+    this.controls.push(control);
+    return control;
+  }
 
   private removeControl(control: PanelControl) {
     const idx = this.controls.indexOf(control);
@@ -616,10 +641,9 @@ export class ControlManager {
   }
 
   destroy() {
-    if (this.animId !== null) cancelAnimationFrame(this.animId);
-    for (const c of this.controls) c.element.remove();
-    for (const [, div] of this.panelContainers) div.remove();
-    this.controls.length = 0;
+    if (this.animId) cancelAnimationFrame(this.animId);
+    this.controls.forEach(c => c.destroy());
+    this.controls = [];
     this.panelContainers.clear();
   }
 }
