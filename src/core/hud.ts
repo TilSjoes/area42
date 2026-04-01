@@ -86,6 +86,10 @@ export class HUD {
   private analysisPanel: Panel | null = null;
 
   // Graph panning state
+  // Panel dragging lock state
+  private panelsLocked: boolean = true;
+
+  // Graph panning state
   private isPanning = false;
   private panStart: Vec2 = { x: 0, y: 0 };
   private panGraph: Graph | null = null;
@@ -168,6 +172,13 @@ export class HUD {
 
     // Mouse interactions
     this.setupInteractions();
+    // Load lock state from localStorage
+    try {
+      const saved = localStorage.getItem('a42-panels-locked');
+      if (saved !== null) {
+        this.panelsLocked = saved !== 'false';
+      }
+    } catch (e) {}
 
     // Start
     this.renderer.start();
@@ -499,6 +510,9 @@ if (panel.minimized) {        if (panel.contains(point)) return panel;        co
           this.scene.root.remove(panel);
           return;
         }
+        // Check if panels are locked
+        if (this.panelsLocked) return;
+
         if (panel.isInHeader(point)) {
           this.dragTarget = panel;
           panel.startDrag(point);
@@ -1118,3 +1132,13 @@ child.showTooltip(hitNode, point.x, point.y);
 }
 
 
+
+  // Public API for lock state
+  get panelsLockedState(): boolean { return this.panelsLocked; }
+  set panelsLockedState(value: boolean) { 
+    this.panelsLocked = value;
+    // Update localStorage
+    try {
+      localStorage.setItem('a42-panels-locked', value ? 'true' : 'false');
+    } catch (e) {}
+  }

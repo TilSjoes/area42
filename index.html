@@ -174,6 +174,28 @@
     }
 
     .feature::before {
+    .a42-lock-btn {
+      position: fixed;
+      top: 20px;
+      right: 20px;
+      z-index: 1000;
+      padding: 8px 12px;
+      border: 1px solid rgba(123,104,238,0.3);
+      background: rgba(123,104,238,0.08);
+      color: #7b68ee;
+      font-size: 16px;
+      cursor: pointer;
+      border-radius: 4px;
+      transition: all 0.15s;
+    }
+    .a42-lock-btn:hover {
+      background: rgba(123,104,238,0.15);
+      transform: scale(1.05);
+    }
+    .a42-lock-btn.locked {
+      background: rgba(123,104,238,0.15);
+      color: #a78bfa;
+    }
       content: '';
       display: inline-block;
       width: 6px;
@@ -191,6 +213,24 @@
     <div class="logo">AREA42</div>
     <div class="subtitle">Futuristic HUD Visualization Engine</div>
     <div class="version">v0.1.0 &mdash; Zero-dependency Canvas 2D</div>
+  <div id="panel-lock-toggle" class="a42-lock-btn locked" title="Toggle panel dragging">&#x1F512;</div>
+  
+  <!-- Panel Lock Toggle -->
+  <!-- Panel lock toggle button -->
+  <div id="panel-lock-toggle" class="a42-lock-btn locked" title="Toggle panel dragging">&#x1F512;</div>
+
+  <script src="src/demo/main.js"></script>
+    updateLockButton();
+    
+    // Toggle on click
+    lockBtn.addEventListener('click', () => {
+      panelsLocked = !panelsLocked;
+      try {
+        localStorage.setItem('a42-panels-locked', panelsLocked ? 'true' : 'false');
+      } catch (e) {}
+      updateLockButton();
+    });
+  </script>
   </div>
 
   <div class="features">
@@ -293,5 +333,93 @@
     }
   </script>
 
+</body>
+</html>
+
+  <script>
+    // Lock/unlock toggle for panel dragging
+    const LOCK_KEY = 'area42:panel-lock';
+    let isLocked = localStorage.getItem(LOCK_KEY) !== 'false';
+
+    function renderLockButton() {
+      const btn = document.createElement('div');
+      btn.style.cssText = `position:absolute;top:20px;right:20px;background:rgba(19,26,43,0.9);border:1px solid rgba(123,104,238,0.3);border-radius:4px;padding:8px 12px;cursor:pointer;font-size:14px;display:flex;align-items:center;gap:6px;color:#c8d6e5;transition:all 0.2s;z-index:9999;`;
+      btn.innerHTML = `
+        <span style="font-size:16px;">${isLocked ? '&#x1F512;' : '&#x1F513;'}</span>
+        <span>${isLocked ? 'LOCKED' : 'UNLOCKED'}</span>
+      `;
+      btn.onclick = () => {
+        isLocked = !isLocked;
+        localStorage.setItem(LOCK_KEY, isLocked ? 'true' : 'false');
+        btn.innerHTML = `
+          <span style="font-size:16px;">${isLocked ? '&#x1F512;' : '&#x1F513;'}</span>
+          <span>${isLocked ? 'LOCKED' : 'UNLOCKED'}</span>
+        `;
+        // Broadcast to main.ts to respect lock state
+        window.dispatchEvent(new CustomEvent('panelLockChange', { detail: { locked: isLocked } }));
+      };
+      document.body.appendChild(btn);
+    }
+
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', renderLockButton);
+    } else {
+      renderLockButton();
+    }
+  </script>
+
+  <!-- Lock Toggle Overlay -->
+  <button id="a42-lock-toggle" class="a42-lock-btn" title="Toggle panel drag lock" style="position: fixed; top: 20px; right: 20px; z-index: 1000; padding: 8px 12px; border: 1px solid rgba(123, 104, 238, 0.4); background: rgba(123, 104, 238, 0.15); color: #7b68ee; font-size: 16px; cursor: pointer; border-radius: 6px; transition: all 0.2s;">
+    ♿
+  </button>
+
+  <script>
+    // Lock toggle logic - persisted in localStorage
+    const lockBtn = document.getElementById('a42-lock-toggle');
+    const isLocked = localStorage.getItem('a42-panels-locked') !== 'false';
+    
+    function updateLockIcon() {
+      const locked = localStorage.getItem('a42-panels-locked') !== 'false';
+      lockBtn.textContent = locked ? '♾' : '♿'; // Lock/Unlocked icon
+      lockBtn.style.borderColor = locked ? 'rgba(255, 107, 107, 0.6)' : 'rgba(123, 104, 238, 0.4)';
+      lockBtn.style.color = locked ? '#ff6b6b' : '#7b68ee';
+      lockBtn.style.background = locked ? 'rgba(255, 107, 107, 0.15)' : 'rgba(123, 104, 238, 0.15)';
+    }
+    
+    updateLockIcon();
+    
+    lockBtn.addEventListener('click', () => {
+      const currentlyLocked = localStorage.getItem('a42-panels-locked') !== 'false';
+      localStorage.setItem('a42-panels-locked', String(!currentlyLocked));
+      updateLockIcon();
+    });
+  </script>
+</body>
+</html>
+
+  <!-- Panel lock toggle -->
+  <div id="panel-lock-toggle" style="position: fixed; top: 12px; right: 12px; z-index: 1000;">
+    <button id="panel-lock-btn" style="background: rgba(123, 104, 238, 0.2); border: 1px solid rgba(123, 104, 238, 0.4); color: #c8d6e5; padding: 8px 12px; border-radius: 6px; cursor: pointer; font-size: 14px; backdrop-filter: blur(8px); transition: all 0.2s;" title="Toggle panel lock (locked by default)">
+      🔒 Lock
+    </button>
+  </div>
+
+  <script>
+    // Panel lock toggle logic
+    const lockBtn = document.getElementById('panel-lock-btn');
+    const locked = localStorage.getItem('a42-panels-locked') !== 'false';
+    
+    lockBtn.textContent = locked ? '🔒 Lock' : '🔓 Unlock';
+    lockBtn.style.background = locked ? 'rgba(255, 107, 107, 0.2)' : 'rgba(81, 207, 102, 0.2)';
+    lockBtn.style.borderColor = locked ? 'rgba(255, 107, 107, 0.4)' : 'rgba(81, 207, 102, 0.4)';
+    
+    lockBtn.addEventListener('click', () => {
+      const isLocked = localStorage.getItem('a42-panels-locked') !== 'false';
+      localStorage.setItem('a42-panels-locked', isLocked ? 'false' : 'true');
+      lockBtn.textContent = isLocked ? '🔓 Unlock' : '🔒 Lock';
+      lockBtn.style.background = isLocked ? 'rgba(81, 207, 102, 0.2)' : 'rgba(255, 107, 107, 0.2)';
+      lockBtn.style.borderColor = isLocked ? 'rgba(81, 207, 102, 0.4)' : 'rgba(255, 107, 107, 0.4)';
+    });
+  </script>
 </body>
 </html>
