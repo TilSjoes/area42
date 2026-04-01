@@ -174,6 +174,16 @@
     }
 
     .feature::before {
+      content: '';
+      display: inline-block;
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: #00d4aa;
+      margin-right: 6px;
+      vertical-align: middle;
+    }
+
     .a42-lock-btn {
       position: fixed;
       top: 20px;
@@ -196,15 +206,6 @@
       background: rgba(123,104,238,0.15);
       color: #a78bfa;
     }
-      content: '';
-      display: inline-block;
-      width: 6px;
-      height: 6px;
-      border-radius: 50%;
-      background: #00d4aa;
-      margin-right: 6px;
-      vertical-align: middle;
-    }
   </style>
 </head>
 <body>
@@ -212,26 +213,11 @@
   <div class="hero">
     <div class="logo">AREA42</div>
     <div class="subtitle">Futuristic HUD Visualization Engine</div>
-    <div class="version">v0.1.0 &mdash; Zero-dependency Canvas 2D</div>
-  <div id="panel-lock-toggle" class="a42-lock-btn locked" title="Toggle panel dragging">&#x1F512;</div>
-  
-  <!-- Panel Lock Toggle -->
-  <!-- Panel lock toggle button -->
-  <div id="panel-lock-toggle" class="a42-lock-btn locked" title="Toggle panel dragging">&#x1F512;</div>
-
-  <script src="src/demo/main.js"></script>
-    updateLockButton();
-    
-    // Toggle on click
-    lockBtn.addEventListener('click', () => {
-      panelsLocked = !panelsLocked;
-      try {
-        localStorage.setItem('a42-panels-locked', panelsLocked ? 'true' : 'false');
-      } catch (e) {}
-      updateLockButton();
-    });
-  </script>
+    <div class="version">v0.1.0 — Zero-dependency Canvas 2D</div>
   </div>
+
+  <!-- Panel Lock Toggle Button -->
+  <div id="panel-lock-toggle" class="a42-lock-btn locked" title="Toggle panel dragging">&#x1F512;</div>
 
   <div class="features">
     <span class="feature">Force-Directed Graphs</span>
@@ -273,153 +259,62 @@
       <span class="card-tag">AI Routing</span>
     </a>
 
-    <a href="/timeline.html" class="card accent-cyan">
-      <span class="card-icon">&#x2500;&#x2500;&#x25CF;</span>
+    <a href="/timeline.html" class="card accent-blue">
+      <span class="card-icon">&#x1F4C5;</span>
       <div class="card-title">Timeline</div>
       <div class="card-desc">
-        Gantt-style swimlane timeline. 90 days of git commits, missions, worker tasks,
-        and babelfish dreams with zoom, pan, collapsible groups, and minimap navigation.
+        Swimlane timeline view. Project milestones, task dependencies, critical path,
+        resource allocation, and adaptive zoom controls.
       </div>
-      <span class="card-tag">Swimlane</span>
-    </a>
-
-    <a href="/investigation.html" class="card accent-orange">
-      <span class="card-icon">&#x1F50D;</span>
-      <div class="card-title">Investigation</div>
-      <div class="card-desc">
-        Interactive investigation board. Link analysis between entities,
-        evidence clustering, and collaborative annotation tools.
-      </div>
-      <span class="card-tag">Analysis</span>
-    </a>
-    <a href="/forest.html" class="card accent-green">
-      <span class="card-icon">&#x1F332;</span>
-      <div class="card-title">Forest</div>
-      <div class="card-desc">
-        2.5D perspective view of interconnected trees. IAM, GDPR consent,
-        and AML investigation forests with cross-tree links, depth fog,
-        and animated focus transitions.
-      </div>
-      <span class="card-tag">2.5D Perspective</span>
-    </a>
-    <a href="/forest3d.html" class="card accent-blue">
-      <span class="card-icon">&#x2726;</span>
-      <div class="card-title">3D Forest</div>
-      <div class="card-desc">
-        True 3D forest visualization using Three.js. Glass-like nodes,
-        glowing tube edges, flowing particles on cross-links, orbit controls,
-        and collapse/expand with auto-rotation.
-      </div>
-      <span class="card-tag">Experimental</span>
+      <span class="card-tag">Project Management</span>
     </a>
   </div>
 
   <div class="footer">
-    <a href="https://github.com/TilSjoes/area42">GitHub</a>
-    &nbsp;&middot;&nbsp;
-    DONTPANIC AS &nbsp;&middot;&nbsp; 2026
+    <p>Area42 Visualization Engine &mdash; <a href="/">Home</a> &middot; <a href="/privacy.html">Privacy</a></p>
   </div>
 
   <script>
-    // Route to demo if ?demo=main param present
-    const params = new URLSearchParams(window.location.search);
-    if (params.get('demo') === 'main') {
-      document.body.innerHTML = '<div id="hud" style="width:100vw;height:100vh;"></div>';
-      document.body.style.overflow = 'hidden';
-      const script = document.createElement('script');
-      script.type = 'module';
-      script.src = '/src/demo/main.ts';
-      document.body.appendChild(script);
-    }
-  </script>
+    // Panel lock state — default locked
+    let panelsLocked = true;
 
-</body>
-</html>
+    // Load saved state
+    try {
+      const saved = localStorage.getItem('a42-panels-locked');
+      if (saved !== null) panelsLocked = saved !== 'false';
+    } catch (e) {}
 
-  <script>
-    // Lock/unlock toggle for panel dragging
-    const LOCK_KEY = 'area42:panel-lock';
-    let isLocked = localStorage.getItem(LOCK_KEY) !== 'false';
-
-    function renderLockButton() {
-      const btn = document.createElement('div');
-      btn.style.cssText = `position:absolute;top:20px;right:20px;background:rgba(19,26,43,0.9);border:1px solid rgba(123,104,238,0.3);border-radius:4px;padding:8px 12px;cursor:pointer;font-size:14px;display:flex;align-items:center;gap:6px;color:#c8d6e5;transition:all 0.2s;z-index:9999;`;
-      btn.innerHTML = `
-        <span style="font-size:16px;">${isLocked ? '&#x1F512;' : '&#x1F513;'}</span>
-        <span>${isLocked ? 'LOCKED' : 'UNLOCKED'}</span>
-      `;
-      btn.onclick = () => {
-        isLocked = !isLocked;
-        localStorage.setItem(LOCK_KEY, isLocked ? 'true' : 'false');
-        btn.innerHTML = `
-          <span style="font-size:16px;">${isLocked ? '&#x1F512;' : '&#x1F513;'}</span>
-          <span>${isLocked ? 'LOCKED' : 'UNLOCKED'}</span>
-        `;
-        // Broadcast to main.ts to respect lock state
-        window.dispatchEvent(new CustomEvent('panelLockChange', { detail: { locked: isLocked } }));
-      };
-      document.body.appendChild(btn);
+    function updateLockButton() {
+      const btn = document.getElementById('panel-lock-toggle');
+      if (btn) {
+        btn.textContent = panelsLocked ? '\u{1F512}' : '\u{1F513}';
+        if (panelsLocked) {
+          btn.classList.add('locked');
+          btn.title = 'Unlock panels';
+        } else {
+          btn.classList.remove('locked');
+          btn.title = 'Lock panels';
+        }
+      }
     }
 
-    if (document.readyState === 'loading') {
-      document.addEventListener('DOMContentLoaded', renderLockButton);
-    } else {
-      renderLockButton();
-    }
-  </script>
+    // Initialize button
+    updateLockButton();
 
-  <!-- Lock Toggle Overlay -->
-  <button id="a42-lock-toggle" class="a42-lock-btn" title="Toggle panel drag lock" style="position: fixed; top: 20px; right: 20px; z-index: 1000; padding: 8px 12px; border: 1px solid rgba(123, 104, 238, 0.4); background: rgba(123, 104, 238, 0.15); color: #7b68ee; font-size: 16px; cursor: pointer; border-radius: 6px; transition: all 0.2s;">
-    ♿
-  </button>
-
-  <script>
-    // Lock toggle logic - persisted in localStorage
-    const lockBtn = document.getElementById('a42-lock-toggle');
-    const isLocked = localStorage.getItem('a42-panels-locked') !== 'false';
-    
-    function updateLockIcon() {
-      const locked = localStorage.getItem('a42-panels-locked') !== 'false';
-      lockBtn.textContent = locked ? '♾' : '♿'; // Lock/Unlocked icon
-      lockBtn.style.borderColor = locked ? 'rgba(255, 107, 107, 0.6)' : 'rgba(123, 104, 238, 0.4)';
-      lockBtn.style.color = locked ? '#ff6b6b' : '#7b68ee';
-      lockBtn.style.background = locked ? 'rgba(255, 107, 107, 0.15)' : 'rgba(123, 104, 238, 0.15)';
-    }
-    
-    updateLockIcon();
-    
-    lockBtn.addEventListener('click', () => {
-      const currentlyLocked = localStorage.getItem('a42-panels-locked') !== 'false';
-      localStorage.setItem('a42-panels-locked', String(!currentlyLocked));
-      updateLockIcon();
+    // Toggle on click
+    document.getElementById('panel-lock-toggle').addEventListener('click', () => {
+      panelsLocked = !panelsLocked;
+      try {
+        localStorage.setItem('a42-panels-locked', panelsLocked ? 'true' : 'false');
+      } catch (e) {}
+      updateLockButton();
+      // Sync with HUD instance if running
+      if (window.__area42 && window.__area42.hud) {
+        window.__area42.hud.panelsLockedState = panelsLocked;
+      }
     });
   </script>
-</body>
-</html>
 
-  <!-- Panel lock toggle -->
-  <div id="panel-lock-toggle" style="position: fixed; top: 12px; right: 12px; z-index: 1000;">
-    <button id="panel-lock-btn" style="background: rgba(123, 104, 238, 0.2); border: 1px solid rgba(123, 104, 238, 0.4); color: #c8d6e5; padding: 8px 12px; border-radius: 6px; cursor: pointer; font-size: 14px; backdrop-filter: blur(8px); transition: all 0.2s;" title="Toggle panel lock (locked by default)">
-      🔒 Lock
-    </button>
-  </div>
-
-  <script>
-    // Panel lock toggle logic
-    const lockBtn = document.getElementById('panel-lock-btn');
-    const locked = localStorage.getItem('a42-panels-locked') !== 'false';
-    
-    lockBtn.textContent = locked ? '🔒 Lock' : '🔓 Unlock';
-    lockBtn.style.background = locked ? 'rgba(255, 107, 107, 0.2)' : 'rgba(81, 207, 102, 0.2)';
-    lockBtn.style.borderColor = locked ? 'rgba(255, 107, 107, 0.4)' : 'rgba(81, 207, 102, 0.4)';
-    
-    lockBtn.addEventListener('click', () => {
-      const isLocked = localStorage.getItem('a42-panels-locked') !== 'false';
-      localStorage.setItem('a42-panels-locked', isLocked ? 'false' : 'true');
-      lockBtn.textContent = isLocked ? '🔓 Unlock' : '🔒 Lock';
-      lockBtn.style.background = isLocked ? 'rgba(81, 207, 102, 0.2)' : 'rgba(255, 107, 107, 0.2)';
-      lockBtn.style.borderColor = isLocked ? 'rgba(81, 207, 102, 0.4)' : 'rgba(255, 107, 107, 0.4)';
-    });
-  </script>
+  <script src="src/demo/main.js"></script>
 </body>
 </html>

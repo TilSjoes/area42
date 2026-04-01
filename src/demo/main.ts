@@ -970,6 +970,7 @@ hud.commandPalette.register([
 
 // Export for HUD double-click handler and edge clicks
 (window as any).__area42 = {
+  hud,
   graph,
   expandedNodes,
   onEdgeClick: handleEdgeClick,
