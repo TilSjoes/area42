@@ -128,3 +128,11 @@ export type { KnobOptions, SliderOptions, ToggleOptions, InputFieldOptions } fro
 // Panel Controls (HTML overlay — recommended for all interactive elements)
 export { ControlManager } from "./interactions/panel-controls.js";
 export type { ButtonControl, RadioGroupControl, SliderControl, ToggleControl, InputControl, PanelControl } from "./interactions/panel-controls.js";
+
+// Elements (v2)
+export { Text } from "./elements/text.js";
+export type { TextOptions, TextAlign, TextWeight } from "./elements/text.js";
+export { Button } from "./elements/button.js";
+export type { ButtonOptions, ButtonVariant } from "./elements/button.js";
+export { Separator } from "./elements/separator.js";
+export type { SeparatorOptions, SeparatorDirection } from "./elements/separator.js";
