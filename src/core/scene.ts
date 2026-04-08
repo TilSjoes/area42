@@ -141,8 +141,23 @@ export class Scene {
     ctx.globalAlpha *= node.opacity;
     ctx.translate(node.position.x, node.position.y);
     node.render(ctx);
-    for (const child of node.children) {
-      this.renderNode(ctx, child);
+    // If node defines clip bounds, clip children to those bounds
+    if (node.children.length > 0 && (node as any).clipChildren) {
+      ctx.save();
+      const cb = (node as any).getClipBounds?.();
+      if (cb) {
+        ctx.beginPath();
+        ctx.rect(cb.x, cb.y, cb.w, cb.h);
+        ctx.clip();
+      }
+      for (const child of node.children) {
+        this.renderNode(ctx, child);
+      }
+      ctx.restore();
+    } else {
+      for (const child of node.children) {
+        this.renderNode(ctx, child);
+      }
     }
     ctx.restore();
   }

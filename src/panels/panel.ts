@@ -86,6 +86,15 @@ export class Panel extends SceneNode {
     return this;
   }
 
+  getClipBounds() {
+    return {
+      x: 0,
+      y: this.headerHeight,
+      w: this.size.x,
+      h: this.size.y - this.headerHeight,
+    };
+  }
+
   onContent(renderer: (ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number) => void) {
     this.contentRenderer = renderer;
     return this;
