@@ -9,6 +9,7 @@ import { Renderer, RenderContext } from "./renderer.js";
 import { Scene, SceneNode, Vec2 } from "./scene.js";
 import { Panel, PanelOptions, SnapZone } from "../panels/panel.js";
 import { Graph } from "../graph/graph.js";
+import { Button } from "../elements/button.js";
 import type { GraphNode, GraphEdge, EdgeDetail } from "../graph/graph.js";
 import { Theme, NeonTheme } from "../themes/neon.js";
 import { ContextMenu } from "../panels/contextmenu.js";
@@ -63,6 +64,7 @@ export class HUD {
   private panels: Map<string, Panel> = new Map();
   private dragTarget: Panel | null = null;
   private hoverTarget: SceneNode | null = null;
+  private lastHoveredButton: Button | null = null;
   private showBackground: boolean;
   private gridVisible = true;
 
@@ -520,6 +522,7 @@ if (panel.minimized) {        if (panel.contains(point)) return panel;        co
           break;
         }
       }
+// v2: Container tree hit testing for Button elements      const hitNode = this.scene.findAt(point);      if (hitNode instanceof Button) {        hitNode.pressed = true;        hitNode.click();        setTimeout(() => { hitNode.pressed = false; }, 150);        return;      }
     });
 
     canvas.addEventListener("mousemove", (e) => {
@@ -591,6 +594,7 @@ child.showTooltip(hitNode, point.x, point.y);
           if (!isResize) canvas.style.cursor = this.hoverTarget ? "pointer" : "default";
         }
       }
+// v2: Button hover tracking      const hoverHit = this.scene.findAt(point);      if (hoverHit instanceof Button) {        if (this.lastHoveredButton && this.lastHoveredButton !== hoverHit) {          this.lastHoveredButton.hovered = false;        }        hoverHit.hovered = true;        this.lastHoveredButton = hoverHit;        canvas.style.cursor = "pointer";      } else if (this.lastHoveredButton) {        this.lastHoveredButton.hovered = false;        this.lastHoveredButton = null;      }
     });
 
     canvas.addEventListener("mouseup", () => {
