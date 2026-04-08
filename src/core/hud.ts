@@ -468,6 +468,14 @@ if (panel.minimized) {        if (panel.contains(point)) return panel;        co
         }
       }
 
+      // v2: Check for Button clicks in the container tree (before panel handling)
+      const hitNode = this.scene.findAt(point);
+      if (hitNode instanceof Button) {
+        hitNode.pressed = true;
+        hitNode.click();
+        setTimeout(() => { hitNode.pressed = false; }, 150);
+        return;
+      }
       for (const panel of nodes) {
         const wp = panel.worldPosition();
 // Click on minimized dot to restore        if (panel.minimized && panel.contains(point)) {          this.restoreFromDock(panel);          return;        }        // Minimize button click        if (panel.isInMinimizeButton(point)) {          this.minimizePanel(panel);          return;        }
@@ -522,7 +530,6 @@ if (panel.minimized) {        if (panel.contains(point)) return panel;        co
           break;
         }
       }
-// v2: Container tree hit testing for Button elements      const hitNode = this.scene.findAt(point);      if (hitNode instanceof Button) {        hitNode.pressed = true;        hitNode.click();        setTimeout(() => { hitNode.pressed = false; }, 150);        return;      }
     });
 
     canvas.addEventListener("mousemove", (e) => {
