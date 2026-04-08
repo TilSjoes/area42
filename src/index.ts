@@ -48,6 +48,17 @@ export type { Particle, EmitOptions } from "./effects/particles.js";
 // Data Sources
 export { WebSocketSource, RESTSource, SSESource } from "./data/source.js";
 export type { DataSource } from "./data/source.js";
+// Reactive Data Binding (v2)
+export { MutableSource, FieldSource, ComputedSource, DataSourceAdapter, field, computed } from "./data/reactive.js";
+export type { ReactiveSource, Unsubscribe } from "./data/reactive.js";
+
+// Domain Contexts (v2)
+export { DomainContext } from "./data/domain.js";
+export type { DomainOptions } from "./data/domain.js";
+
+// Bound Elements (v2)
+export { BoundMetric, BoundLabel, BoundStatusDot } from "./data/bound.js";
+export type { BoundMetricOptions, BoundLabelOptions, BoundStatusDotOptions } from "./data/bound.js";
 
 // Themes
 export { NeonTheme, GlassTheme } from "./themes/neon.js";
