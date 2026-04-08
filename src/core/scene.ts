@@ -4,13 +4,12 @@
  * Every visual element is a Container. Containers hold Containers.
  * The screen is the root Container.
  *
- * v2 additions:
- * - overflow: "visible" | "hidden" — automatic clipping
- * - contentOffset: child rendering offset (e.g., below Panel header)
- * - localToWorld / worldToLocal coordinate transforms
- * - getClipRect / getWorldBounds for hit testing
- * - Container alias for SceneNode (backward compatible)
+ * v2.0 (Session 1): overflow, contentOffset, clipping, coordinate transforms
+ * v2.1 (Session 2): layout (vertical/horizontal/grid), style inheritance
  */
+
+import { applyLayout, type LayoutType as ChildLayoutType, type Insets } from "./layout.js";
+import { type PartialStyle, type Style, getResolvedStyle } from "./style.js";
 
 export interface Vec2 {
   x: number;
@@ -41,6 +40,10 @@ export interface SceneNodeOptions {
   visible?: boolean;
   interactive?: boolean;
   overflow?: Overflow;
+  childLayout?: ChildLayoutType;
+  gap?: number;
+  padding?: Insets;
+  style?: PartialStyle;
 }
 
 let nextId = 0;
@@ -72,6 +75,30 @@ export class SceneNode {
    */
   contentSize: Vec2 | null = null;
 
+  // --- v2.1: Layout ---
+
+  /** Layout algorithm for children. "none" = manual positioning (default). */
+  childLayout: ChildLayoutType = "none";
+
+  /** Gap between children when using layout */
+  gap: number = 0;
+
+  /** Padding inside the container for layout */
+  padding: Insets = { top: 0, right: 0, bottom: 0, left: 0 };
+
+  /** If true, this child opts out of parent layout (positioned manually) */
+  layoutManual: boolean = false;
+
+  // --- v2.1: Style ---
+
+  /** Partial style overrides — unset fields inherit from parent */
+  style?: PartialStyle;
+
+  /** Cache: resolved style (invalidated on parent change) */
+  private _resolvedStyle: Style | null = null;
+  private _styleGeneration = 0;
+  private static _globalStyleGen = 0;
+
   // Animation state
   targetPosition: Vec2 | null = null;
   targetOpacity: number | null = null;
@@ -85,11 +112,16 @@ export class SceneNode {
     this.visible = options.visible ?? true;
     this.interactive = options.interactive ?? true;
     this.overflow = options.overflow ?? "visible";
+    this.childLayout = options.childLayout ?? "none";
+    this.gap = options.gap ?? 0;
+    this.padding = options.padding ?? { top: 0, right: 0, bottom: 0, left: 0 };
+    this.style = options.style;
   }
 
   add(child: SceneNode) {
     child.parent = this;
     this.children.push(child);
+    SceneNode._globalStyleGen++;
     return this;
   }
 
@@ -98,6 +130,7 @@ export class SceneNode {
     if (idx >= 0) {
       this.children.splice(idx, 1);
       child.parent = null;
+      SceneNode._globalStyleGen++;
     }
     return this;
   }
@@ -108,6 +141,7 @@ export class SceneNode {
       child.parent = null;
     }
     this.children = [];
+    SceneNode._globalStyleGen++;
     return this;
   }
 
@@ -138,9 +172,33 @@ export class SceneNode {
         this.targetOpacity = null;
       }
     }
+
+    // v2.1: Apply layout to children before they update
+    if (this.childLayout !== "none" && this.children.length > 0) {
+      const cs = this.getContentDimensions();
+      applyLayout(this.childLayout, this.children, cs.w, cs.h, this.gap, this.padding);
+    }
+
     for (const child of this.children) {
       child.update(dt);
     }
+  }
+
+  // --- v2.1: Style resolution ---
+
+  /** Get the fully resolved style for this container (inherits from parents) */
+  resolvedStyle(): Style {
+    if (this._resolvedStyle && this._styleGeneration === SceneNode._globalStyleGen) {
+      return this._resolvedStyle;
+    }
+    this._resolvedStyle = getResolvedStyle(this);
+    this._styleGeneration = SceneNode._globalStyleGen;
+    return this._resolvedStyle;
+  }
+
+  /** Invalidate style cache (call when changing style) */
+  invalidateStyle() {
+    SceneNode._globalStyleGen++;
   }
 
   // --- v2: Coordinate Transforms ---
@@ -180,6 +238,20 @@ export class SceneNode {
   getWorldBounds(): Rect {
     const wp = this.worldPosition();
     return { x: wp.x, y: wp.y, w: this.size.x, h: this.size.y };
+  }
+
+  /**
+   * v2.1: Get the content dimensions (width/height available for children).
+   * Accounts for contentOffset and contentSize.
+   */
+  getContentDimensions(): { w: number; h: number } {
+    if (this.contentSize) {
+      return { w: this.contentSize.x, h: this.contentSize.y };
+    }
+    return {
+      w: this.size.x - this.contentOffset.x,
+      h: this.size.y - this.contentOffset.y,
+    };
   }
 
   /**

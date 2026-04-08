@@ -17,6 +17,13 @@ export { Renderer } from "./core/renderer.js";
 export type { RenderContext } from "./core/renderer.js";
 export { Scene, SceneNode, Container } from "./core/scene.js";
 export type { Vec2, Rect, Transform, Overflow, SceneNodeOptions } from "./core/scene.js";
+// Layout
+export { applyLayout, insets } from "./core/layout.js";
+export type { LayoutType as ChildLayoutType, Insets } from "./core/layout.js";
+
+// Style
+export { resolveStyle, collectStyleChain, getResolvedStyle, DEFAULT_STYLE } from "./core/style.js";
+export type { Style, PartialStyle } from "./core/style.js";
 
 // Graph
 export { Graph, GraphNode, GraphEdge } from "./graph/graph.js";
