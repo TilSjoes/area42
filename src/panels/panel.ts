@@ -1,9 +1,12 @@
 /**
- * Area42 Glass Panel
+ * Area42 Glass Panel — v2 Container
  *
  * Floating, draggable, semi-transparent panel with glass morphism effect.
  * The signature UI element of Area42.
- * Supports minimize-to-icon and edge snap zones.
+ *
+ * v2: Panel is a proper Container with overflow:"hidden".
+ * Children automatically clip to the content area (below the header).
+ * The onContent() callback still works for backward compatibility.
  */
 
 import { SceneNode, Vec2 } from "../core/scene.js";
@@ -21,6 +24,8 @@ export interface PanelOptions {
   color?: string;
   titleColor?: string;
   compact?: boolean;
+  /** v2: clip children to panel bounds (default true) */
+  clip?: boolean;
 }
 
 /** Snap zone identifiers for edge-docking */
@@ -51,12 +56,12 @@ export class Panel extends SceneNode {
   /** Current snap zone (null = floating) */
   snapZone: SnapZone = null;
 
-  private headerHeight = 28;
+  headerHeight = 28;
   private cornerRadius = 8;
   private dragging = false;
   private dragOffset: Vec2 = { x: 0, y: 0 };
 
-  // Content render callback
+  // Content render callback (v1 backward compat)
   private contentRenderer: ((ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number) => void) | null = null;
 
   constructor(options: PanelOptions) {
@@ -64,6 +69,7 @@ export class Panel extends SceneNode {
       id: options.id,
       position: options.position || { x: 50, y: 50 },
       size: options.size || { x: 300, y: 200 },
+      overflow: (options.clip !== false) ? "hidden" : "visible",
     });
     this.title = options.title;
     this.glass = options.glass ?? true;
@@ -78,6 +84,34 @@ export class Panel extends SceneNode {
       this.headerHeight = 22;
       this.cornerRadius = 6;
     }
+
+    // v2: Set content offset to below header + padding
+    this.updateContentGeometry();
+  }
+
+  /** v2: Recalculate contentOffset and contentSize based on current state */
+  private updateContentGeometry() {
+    const pad = this.compact ? 4 : 8;
+    this.contentOffset = {
+      x: pad,
+      y: this.headerHeight + pad,
+    };
+    this.contentSize = {
+      x: this.size.x - pad * 2,
+      y: this.size.y - this.headerHeight - pad * 2,
+    };
+  }
+
+  /**
+   * v2: Get the content area dimensions (useful for sizing children).
+   * Returns { width, height } of the area available for children.
+   */
+  getContentSize(): { width: number; height: number } {
+    const pad = this.compact ? 4 : 8;
+    return {
+      width: this.size.x - pad * 2,
+      height: this.size.y - this.headerHeight - pad * 2,
+    };
   }
 
   /** Set a callback for when the close button is clicked */
@@ -116,7 +150,6 @@ export class Panel extends SceneNode {
   /** Snap panel to a zone within a container of given dimensions */
   snapTo(zone: SnapZone, containerW: number, containerH: number): void {
     if (zone === null) {
-      // Unsnap: restore previous position/size
       if (this.preSnapPosition && this.preSnapSize) {
         this.position.x = this.preSnapPosition.x;
         this.position.y = this.preSnapPosition.y;
@@ -124,10 +157,10 @@ export class Panel extends SceneNode {
         this.size.y = this.preSnapSize.y;
       }
       this.snapZone = null;
+      this.updateContentGeometry();
       return;
     }
 
-    // Save pre-snap state (only if not already snapped)
     if (!this.snapZone) {
       this.preSnapPosition = { x: this.position.x, y: this.position.y };
       this.preSnapSize = { x: this.size.x, y: this.size.y };
@@ -139,56 +172,41 @@ export class Panel extends SceneNode {
 
     switch (zone) {
       case 'top':
-        this.position.x = margin;
-        this.position.y = margin;
-        this.size.x = containerW - margin * 2;
-        this.size.y = halfH;
+        this.position.x = margin; this.position.y = margin;
+        this.size.x = containerW - margin * 2; this.size.y = halfH;
         break;
       case 'bottom':
-        this.position.x = margin;
-        this.position.y = halfH + margin * 2;
-        this.size.x = containerW - margin * 2;
-        this.size.y = halfH;
+        this.position.x = margin; this.position.y = halfH + margin * 2;
+        this.size.x = containerW - margin * 2; this.size.y = halfH;
         break;
       case 'left':
-        this.position.x = margin;
-        this.position.y = margin;
-        this.size.x = halfW;
-        this.size.y = containerH - margin * 2;
+        this.position.x = margin; this.position.y = margin;
+        this.size.x = halfW; this.size.y = containerH - margin * 2;
         break;
       case 'right':
-        this.position.x = halfW + margin * 2;
-        this.position.y = margin;
-        this.size.x = halfW;
-        this.size.y = containerH - margin * 2;
+        this.position.x = halfW + margin * 2; this.position.y = margin;
+        this.size.x = halfW; this.size.y = containerH - margin * 2;
         break;
       case 'top-left':
-        this.position.x = margin;
-        this.position.y = margin;
-        this.size.x = halfW;
-        this.size.y = halfH;
+        this.position.x = margin; this.position.y = margin;
+        this.size.x = halfW; this.size.y = halfH;
         break;
       case 'top-right':
-        this.position.x = halfW + margin * 2;
-        this.position.y = margin;
-        this.size.x = halfW;
-        this.size.y = halfH;
+        this.position.x = halfW + margin * 2; this.position.y = margin;
+        this.size.x = halfW; this.size.y = halfH;
         break;
       case 'bottom-left':
-        this.position.x = margin;
-        this.position.y = halfH + margin * 2;
-        this.size.x = halfW;
-        this.size.y = halfH;
+        this.position.x = margin; this.position.y = halfH + margin * 2;
+        this.size.x = halfW; this.size.y = halfH;
         break;
       case 'bottom-right':
-        this.position.x = halfW + margin * 2;
-        this.position.y = halfH + margin * 2;
-        this.size.x = halfW;
-        this.size.y = halfH;
+        this.position.x = halfW + margin * 2; this.position.y = halfH + margin * 2;
+        this.size.x = halfW; this.size.y = halfH;
         break;
     }
 
     this.snapZone = zone;
+    this.updateContentGeometry();
   }
 
   /** Detect which snap zone a position falls into, given container dimensions */
@@ -215,6 +233,9 @@ export class Panel extends SceneNode {
       this.renderMinimizedDot(ctx);
       return;
     }
+
+    // v2: Update content geometry in case size changed (drag resize, snap)
+    this.updateContentGeometry();
 
     const { x, y } = { x: 0, y: 0 };
     const w = this.size.x;
@@ -251,7 +272,7 @@ export class Panel extends SceneNode {
     if (gradColor.startsWith("#")) {
       gradColor = withAlpha(gradColor, "88");
     } else if (gradColor.startsWith("rgb")) {
-      gradColor = gradColor.replace(/[\d.]+\)\$/, "0.5)");
+      gradColor = gradColor.replace(/[\d.]+\)$/, "0.5)");
     }
     grad.addColorStop(0.5, gradColor);
     grad.addColorStop(1, "transparent");
@@ -280,7 +301,7 @@ export class Panel extends SceneNode {
       const minX = x + w - 26;
       ctx.fillText("\u2013", minX, y + this.headerHeight / 2);
 
-      // Close button (×)
+      // Close button
       const clsX = x + w - 10;
       ctx.fillText("\u00d7", clsX, y + this.headerHeight / 2);
 
@@ -295,7 +316,8 @@ export class Panel extends SceneNode {
       ctx.lineTo(x + w, y + this.headerHeight);
       ctx.stroke();
 
-      // Content area
+      // v1 backward compat: contentRenderer callback
+      // This renders in the same coordinate space as before (absolute within panel)
       if (this.contentRenderer) {
         ctx.save();
         ctx.beginPath();
@@ -336,6 +358,10 @@ export class Panel extends SceneNode {
       ctx.fill();
       ctx.restore();
     }
+
+    // NOTE: Children are rendered by Scene.renderNode() AFTER this render() call,
+    // with clipping and contentOffset applied automatically. No need to render
+    // children here — that's the v2 magic.
   }
 
   /** Render the minimized dot icon */
@@ -345,12 +371,10 @@ export class Panel extends SceneNode {
     const cy = s / 2;
     const r = s / 2 - 2;
 
-    // Glow
     ctx.save();
     ctx.shadowColor = this.titleColor.startsWith("#") ? this.titleColor : "#7b68ee";
     ctx.shadowBlur = 12;
 
-    // Circle background
     ctx.beginPath();
     ctx.arc(cx, cy, r, 0, Math.PI * 2);
     ctx.fillStyle = "rgba(10, 14, 23, 0.85)";
@@ -359,7 +383,6 @@ export class Panel extends SceneNode {
     ctx.lineWidth = 1.5;
     ctx.stroke();
 
-    // Title initial
     ctx.fillStyle = this.titleColor;
     ctx.font = "bold 10px system-ui, sans-serif";
     ctx.textAlign = "center";

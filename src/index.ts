@@ -15,8 +15,8 @@ export { HUD } from "./core/hud.js";
 export type { HUDOptions } from "./core/hud.js";
 export { Renderer } from "./core/renderer.js";
 export type { RenderContext } from "./core/renderer.js";
-export { Scene, SceneNode } from "./core/scene.js";
-export type { Vec2, Transform, SceneNodeOptions } from "./core/scene.js";
+export { Scene, SceneNode, Container } from "./core/scene.js";
+export type { Vec2, Rect, Transform, Overflow, SceneNodeOptions } from "./core/scene.js";
 
 // Graph
 export { Graph, GraphNode, GraphEdge } from "./graph/graph.js";
