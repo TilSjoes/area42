@@ -2,8 +2,7 @@
  * Area42 v2 Button Element
  *
  * Canvas-rendered clickable button with hover/active states.
- * Uses resolved style for colors. Integrates with the container
- * event system for click handling.
+ * v2.2: Implements pointer event interface for tree-based event dispatch.
  */
 
 import { SceneNode, type Vec2 } from "../core/scene.js";
@@ -15,11 +14,8 @@ export interface ButtonOptions {
   label: string;
   size?: Vec2;
   variant?: ButtonVariant;
-  /** Custom accent color (overrides variant) */
   color?: string;
-  /** Click handler */
   onClick?: () => void;
-  /** Disabled state */
   disabled?: boolean;
 }
 
@@ -30,7 +26,6 @@ export class Button extends SceneNode {
   private _onClick?: () => void;
   private _disabled: boolean;
 
-  /** Visual states (set by HUD event system or external code) */
   hovered = false;
   pressed = false;
 
@@ -45,29 +40,45 @@ export class Button extends SceneNode {
     this._color = options.color;
     this._onClick = options.onClick;
     this._disabled = options.disabled ?? false;
+    this.cursor = "pointer";
   }
 
-  /** Set click handler */
   onClick(handler: () => void): this {
     this._onClick = handler;
     return this;
   }
 
-  /** Trigger the click handler */
   click(): void {
     if (!this._disabled && this._onClick) {
       this._onClick();
     }
   }
 
-  /** Set disabled state */
   setDisabled(disabled: boolean): void {
     this._disabled = disabled;
   }
 
-  /** Update label */
   setLabel(label: string): void {
     this._label = label;
+  }
+
+  // --- v2.2: Pointer event handlers ---
+
+  onPointerDown(_localPoint: Vec2, _e: MouseEvent): boolean {
+    if (this._disabled) return false;
+    this.pressed = true;
+    this.click();
+    setTimeout(() => { this.pressed = false; }, 150);
+    return true;
+  }
+
+  onPointerEnter(): void {
+    this.hovered = true;
+  }
+
+  onPointerLeave(): void {
+    this.hovered = false;
+    this.pressed = false;
   }
 
   render(ctx: CanvasRenderingContext2D): void {
@@ -76,7 +87,6 @@ export class Button extends SceneNode {
     const h = this.size.y;
     const r = Math.min(4, s.borderRadius);
 
-    // Determine colors from variant
     let btnColor: string;
     let textColor: string;
     switch (this._variant) {
@@ -108,12 +118,10 @@ export class Button extends SceneNode {
 
     ctx.save();
 
-    // Background
     ctx.beginPath();
     ctx.roundRect(0, 0, w, h, r);
 
     if (this._variant === "ghost") {
-      // Ghost: no fill, just border on hover
       if (this.hovered) {
         ctx.fillStyle = textColor + "10";
         ctx.fill();
@@ -122,18 +130,15 @@ export class Button extends SceneNode {
       ctx.lineWidth = 1;
       ctx.stroke();
     } else if (this._variant === "default") {
-      // Default: outline style
       ctx.fillStyle = this.pressed ? btnColor + "22" : this.hovered ? btnColor + "15" : btnColor + "0a";
       ctx.fill();
       ctx.strokeStyle = this.hovered ? btnColor + "66" : btnColor + "33";
       ctx.lineWidth = 1;
       ctx.stroke();
     } else {
-      // Filled variants (accent, danger, warning)
       const alpha = this.pressed ? "cc" : this.hovered ? "ee" : "bb";
       ctx.fillStyle = btnColor + alpha;
       ctx.fill();
-
       if (this.hovered) {
         ctx.shadowColor = btnColor;
         ctx.shadowBlur = 8;
@@ -144,7 +149,6 @@ export class Button extends SceneNode {
       }
     }
 
-    // Label
     ctx.fillStyle = textColor;
     ctx.font = `bold ${Math.max(9, s.fontSize - 1)}px ${s.fontFamily}`;
     ctx.textAlign = "center";

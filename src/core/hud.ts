@@ -62,9 +62,9 @@ export class HUD {
   readonly container: HTMLElement;
 
   private panels: Map<string, Panel> = new Map();
-  private dragTarget: Panel | null = null;
-  private hoverTarget: SceneNode | null = null;
-  private lastHoveredButton: Button | null = null;
+
+
+
   private showBackground: boolean;
   private gridVisible = true;
 
@@ -91,11 +91,8 @@ export class HUD {
   private panelsLocked: boolean = true;
 
   // Graph panning state
-  private isPanning = false;
-  private panStart: Vec2 = { x: 0, y: 0 };
-  private panGraph: Graph | null = null;
-  private panStartOffset: Vec2 = { x: 0, y: 0 };
-// Snap zone preview  private snapPreview: SnapZone = null;
+
+
 
   // Touch pinch state
   private lastPinchDist = 0;
@@ -142,7 +139,7 @@ export class HUD {
         this.drawGrid(rc);
       }
 
-// Render snap zone preview      if (this.snapPreview && this.dragTarget) {        this.drawSnapPreview(rc, this.snapPreview);      }
+
       // Render scene
       this.scene.render(rc.ctx);
 
@@ -311,9 +308,6 @@ export class HUD {
   }
   private readonly SNAP_DISTANCE = 15;
   private readonly EDGE_DOCK_MARGIN = 8;
-  private resizeTarget: Panel | null = null;
-  private dragNode: GraphNode | null = null;
-  private dragGraph: Graph | null = null;
   private resizeEdge: string = "";
 
   /** Snap position to grid or nearby panels */
@@ -360,9 +354,13 @@ if (panel.minimized) {        if (panel.contains(point)) return panel;        co
     return null;
   }
 
-  /** Mouse interaction setup */
+  /** v2.2: Unified event dispatch through container tree */
   private setupInteractions() {
     const canvas = this.renderer["canvas"] as HTMLCanvasElement;
+
+    // v2.2: Single active node for drag tracking
+    let activeNode: SceneNode | null = null;
+    let hoveredNode: SceneNode | null = null;
 
     // --- Right-click context menu ---
     canvas.addEventListener("contextmenu", (e) => {
@@ -381,157 +379,80 @@ if (panel.minimized) {        if (panel.contains(point)) return panel;        co
       this.handleKeyDown(e);
     });
 
+    // --- Mouse down: tree-based dispatch ---
     canvas.addEventListener("mousedown", (e) => {
       const point = this.canvasPoint(e);
 
-      // Dock bar click handling
+      // Priority 1: Dock bar
       const dockPanel = this.dockButtonAt(point);
       if (dockPanel) {
         this.restoreFromDock(dockPanel);
         return;
       }
 
-      // Status bar click handling
+      // Priority 2: Status bar
       const statusBarY = this.renderer.height - this._statusBar.getHeight();
       if (point.y >= statusBarY) {
         this._statusBar.handleClick(point.x);
         return;
       }
 
-      // Command palette blocks clicks when visible
-      if (this._commandPalette.isVisible()) {
-        return;
-      }
+      // Priority 3: Command palette blocks all
+      if (this._commandPalette.isVisible()) return;
 
-      // Context menu click handling (takes priority)
+      // Priority 4: Context menu
       if (this.contextMenu.isVisible()) {
         if (this.contextMenu.handleClick(point)) return;
       }
 
-      // Middle mouse or Ctrl+left = pan
-      if (e.button === 1 || (e.button === 0 && e.ctrlKey)) {
-        const panel = this.panelAt(point);
-        if (!panel) {
+      // Tree dispatch: find the deepest hit node
+      const hit = this.scene.findAt(point);
+
+      if (!hit) {
+        // Click on empty space — clear graph selections
+        if (!e.shiftKey) {
           for (const child of this.scene.root.children) {
-            if (child instanceof Graph) {
-              if (!child.findNodeAt(point.x, point.y)) {
-                this.isPanning = true;
-                this.panStart = { x: point.x, y: point.y };
-                this.panGraph = child;
-                this.panStartOffset = { x: child.offsetX, y: child.offsetY };
-                canvas.style.cursor = "grabbing";
-                e.preventDefault();
-                return;
-              }
-            }
+            if (child instanceof Graph) child.clearSelection();
           }
         }
-      }
-
-      const nodes = [...this.panels.values()].reverse();
-
-      // Check graph nodes first
-      for (const child of this.scene.root.children) {
-        if (child instanceof Graph) {
-          const hitNode = child.findNodeAt(point.x, point.y);
-          if (hitNode) {
-            if (e.shiftKey) {
-              child.toggleSelection(hitNode.id);
-              return;
-            }
-            this.dragNode = hitNode;
-            this.dragGraph = child;
-            child.startNodeDrag(hitNode);
-            return;
-          }
-        }
-      }
-
-      // Click on empty space without shift clears selection
-      if (!e.shiftKey) {
-        let clickedPanel = false;
-        for (const panel of nodes) {
-          const wp = panel.worldPosition();
-          const ph = panel.collapsed ? 28 : panel.size.y;
-          if (point.x >= wp.x && point.x <= wp.x + panel.size.x &&
-              point.y >= wp.y && point.y <= wp.y + ph) {
-            clickedPanel = true;
-            break;
-          }
-        }
-        if (!clickedPanel) {
-          for (const child of this.scene.root.children) {
-            if (child instanceof Graph) {
-              child.clearSelection();
-            }
-          }
-        }
-      }
-
-      // v2: Check for Button clicks in the container tree (before panel handling)
-      const hitNode = this.scene.findAt(point);
-      if (hitNode instanceof Button) {
-        hitNode.pressed = true;
-        hitNode.click();
-        setTimeout(() => { hitNode.pressed = false; }, 150);
         return;
       }
-      for (const panel of nodes) {
-        const wp = panel.worldPosition();
-// Click on minimized dot to restore        if (panel.minimized && panel.contains(point)) {          this.restoreFromDock(panel);          return;        }        // Minimize button click        if (panel.isInMinimizeButton(point)) {          this.minimizePanel(panel);          return;        }
-        if (panel.closable) {
-          const closeX = wp.x + panel.size.x - 20;
-          const closeY = wp.y;
-          if (point.x >= closeX && point.x <= closeX + 20 &&
-              point.y >= closeY && point.y <= closeY + 28) {
-            if (typeof (panel as any).onCloseCallback === "function") {
-              (panel as any).onCloseCallback();
-            } else {
-              panel.visible = false;
-            }
-            return;
-          }
-        }
 
-        const rx = wp.x + panel.size.x;
-        const ry = wp.y + (panel.collapsed ? 28 : panel.size.y);
-        if (!panel.collapsed && Math.abs(point.x - rx) < 12 && Math.abs(point.y - ry) < 12) {
-          this.resizeTarget = panel;
-          this.resizeEdge = "se";
-          this.scene.root.remove(panel);
-          this.scene.root.add(panel);
-          break;
-        }
-        // Check collapse button
-        if (panel.isInCollapseButton && panel.isInCollapseButton(point)) {
-          panel.collapsed = !panel.collapsed;
-          return;
-        }
-        // Check minimize button
-        if (panel.isInMinimizeButton(point)) {
-          this.minimizePanel(panel);
-          return;
-        }
-        // Check close button
-        if (panel.isInCloseButton && panel.isInCloseButton(point)) {
-          if (panel.onCloseCallback) panel.onCloseCallback();
-          this.unregisterPanel(panel.id);
-          this.scene.root.remove(panel);
-          return;
-        }
-        // Check if panels are locked
-        if (this.panelsLocked) return;
+      // If we hit a Panel (or something inside a Panel), bring the Panel to front
+      const panel = hit.node instanceof Panel ? hit.node : hit.node.closest(Panel);
+      if (panel) {
+        this.scene.root.remove(panel);
+        this.scene.root.add(panel);
+      }
 
-        if (panel.isInHeader(point)) {
-          this.dragTarget = panel;
-          panel.startDrag(point);
-          this.scene.root.remove(panel);
-          this.scene.root.add(panel);
-          break;
+      // Dispatch to the hit node
+      if (hit.node.onPointerDown) {
+        const consumed = hit.node.onPointerDown(hit.localPoint, e);
+        if (consumed) {
+          activeNode = hit.node;
+          return;
+        }
+      }
+
+      // If the hit node didn't consume and it's inside a Panel, try the Panel
+      if (panel && panel !== hit.node && panel.onPointerDown) {
+        const panelLocal = panel.worldToLocal(point);
+        const consumed = panel.onPointerDown(panelLocal, e);
+        if (consumed) {
+          activeNode = panel;
+          return;
+        }
+      }
+
+      // Nothing consumed — clear selections on empty panel click
+      if (!e.shiftKey && !panel) {
+        for (const child of this.scene.root.children) {
+          if (child instanceof Graph) child.clearSelection();
         }
       }
     });
 
+    // --- Mouse move: route to active node or hover ---
     canvas.addEventListener("mousemove", (e) => {
       const point = this.canvasPoint(e);
 
@@ -539,136 +460,93 @@ if (panel.minimized) {        if (panel.contains(point)) return panel;        co
         this.contextMenu.handleMove(point);
       }
 
-      if (this.isPanning && this.panGraph) {
-        this.panGraph.offsetX = this.panStartOffset.x + (point.x - this.panStart.x);
-        this.panGraph.offsetY = this.panStartOffset.y + (point.y - this.panStart.y);
+      // Active interaction in progress — route to active node
+      if (activeNode) {
+        if (activeNode.onPointerMove) {
+          activeNode.onPointerMove(point, e);
+        }
         return;
       }
 
-      if (this.dragNode && this.dragGraph) {
-        this.dragGraph.dragNode(this.dragNode, point.x, point.y);
-      } else if (this.resizeTarget) {
-        this.handleResize(point);
-      } else if (this.dragTarget) {
-        this.dragTarget.drag(point);
-        const snapped = this.magneticSnap(this.dragTarget, this.dragTarget.position);
-        this.dragTarget.position.x = snapped.x;
-        this.dragTarget.position.y = snapped.y;
-// Detect snap zone preview during drag        this.snapPreview = Panel.detectSnapZone(point, this.renderer.width, this.renderer.height);
-      } else {
-        const node = this.scene.findAt(point);
-        if (node !== this.hoverTarget) {
-          this.hoverTarget = node;
+      // Hover: find what's under the cursor
+      const hit = this.scene.findAt(point);
+      const newHovered = hit?.node ?? null;
+
+      // Fire enter/leave events
+      if (newHovered !== hoveredNode) {
+        if (hoveredNode?.onPointerLeave) hoveredNode.onPointerLeave();
+        if (newHovered?.onPointerEnter) newHovered.onPointerEnter();
+        hoveredNode = newHovered;
+      }
+
+      // Update cursor
+      if (newHovered) {
+        // Walk up the tree to find a cursor hint
+        let cursor: string | null = null;
+        let node: SceneNode | null = newHovered;
+        while (node && !cursor) {
+          cursor = node.cursor;
+          node = node.parent;
         }
-        // Check for graph node or edge hover
-        let cursorSet = false;
+        canvas.style.cursor = cursor ?? "default";
+
+        // If hovering over a Graph, let it update tooltip/edge hover
+        if (newHovered instanceof Graph && newHovered.onPointerMove) {
+          newHovered.onPointerMove(point, e);
+        }
+      } else {
+        canvas.style.cursor = "default";
+        // Clear all graph hovers when not over anything
         for (const child of this.scene.root.children) {
           if (child instanceof Graph) {
-            const hitNode = child.findNodeAt(point.x, point.y);
-            if (hitNode) {
-              child.hoveredEdge = null;
-              canvas.style.cursor = "grab";
-child.showTooltip(hitNode, point.x, point.y);
-              cursorSet = true;
-              break;
-            }
-            // Edge hover (only if no node is hit)
-            const hitEdge = child.findEdgeAt(point.x, point.y, 10);
-            if (hitEdge !== child.hoveredEdge) {
-              child.hoveredEdge = hitEdge;
-            }
-            if (hitEdge) {
-              canvas.style.cursor = "pointer";
-              cursorSet = true;
-            }
+            child.hoveredEdge = null;
+            child.hideTooltip();
           }
         }
-        if (!cursorSet) {
-          // Clear edge hover if we left edges
-          for (const child of this.scene.root.children) {
-            if (child instanceof Graph) { child.hoveredEdge = null; child.hideTooltip(); }
-          }
-          let isResize = false;
-          for (const [, p] of this.panels) {
-            if (p.collapsed) continue;
-            const wp2 = p.worldPosition();
-            if (Math.abs(point.x - (wp2.x + p.size.x)) < 12 && Math.abs(point.y - (wp2.y + p.size.y)) < 12) {
-              canvas.style.cursor = "se-resize";
-              isResize = true;
-              break;
-            }
-          }
-          if (!isResize) canvas.style.cursor = this.hoverTarget ? "pointer" : "default";
-        }
-      }
-// v2: Button hover tracking      const hoverHit = this.scene.findAt(point);      if (hoverHit instanceof Button) {        if (this.lastHoveredButton && this.lastHoveredButton !== hoverHit) {          this.lastHoveredButton.hovered = false;        }        hoverHit.hovered = true;        this.lastHoveredButton = hoverHit;        canvas.style.cursor = "pointer";      } else if (this.lastHoveredButton) {        this.lastHoveredButton.hovered = false;        this.lastHoveredButton = null;      }
-    });
-
-    canvas.addEventListener("mouseup", () => {
-      if (this.isPanning) {
-        this.isPanning = false;
-        this.panGraph = null;
-        const c = this.renderer["canvas"] as HTMLCanvasElement;
-        c.style.cursor = "default";
-      }
-      if (this.dragTarget) {
-// Apply snap zone if dragged to edge        if (this.snapPreview) {          this.dragTarget.snapTo(this.snapPreview, this.renderer.width, this.renderer.height);          this.snapPreview = null;        }
-        this.dragTarget.endDrag();
-        this.dragTarget = null;
-      }
-      if (this.dragNode && this.dragGraph) {
-        this.dragGraph.endNodeDrag(this.dragNode);
-        this.dragNode = null;
-        this.dragGraph = null;
-      }
-      if (this.resizeTarget) {
-        this.resizeTarget = null;
-        this.resizeEdge = "";
       }
     });
 
-    // Wheel event: zoom graph or scroll panel
+    // --- Mouse up: end active interaction ---
+    canvas.addEventListener("mouseup", (e) => {
+      if (activeNode) {
+        const point = this.canvasPoint(e);
+        if (activeNode.onPointerUp) {
+          activeNode.onPointerUp(point, e);
+        }
+        activeNode = null;
+      }
+      canvas.style.cursor = "default";
+    });
+
+    // --- Wheel: tree dispatch ---
     canvas.addEventListener("wheel", (e) => {
       e.preventDefault();
       const point = this.canvasPoint(e);
-
-      const panel = this.panelAt(point);
-      if (panel && typeof (panel as any).scroll === "function") {
-        (panel as any).scroll(e.deltaY);
-        return;
-      }
-
-      for (const child of this.scene.root.children) {
-        if (child instanceof Graph) {
-          child.applyZoom(e.deltaY, point.x, point.y);
-          return;
-        }
+      const hit = this.scene.findAt(point);
+      if (hit?.node.onWheel) {
+        hit.node.onWheel(e.deltaY, hit.localPoint);
       }
     }, { passive: false });
 
+    // --- Double-click: tree dispatch ---
     canvas.addEventListener("dblclick", (e) => {
       const point = this.canvasPoint(e);
+      const hit = this.scene.findAt(point);
 
-      for (const child of this.scene.root.children) {
-        if (child instanceof Graph) {
-          const hitNode = child.findNodeAt(point.x, point.y);
-          if (hitNode) {
-            this.handleGraphNodeDblClick(child, hitNode);
-            return;
-          }
-        }
+      if (hit?.node.onDoubleClick) {
+        if (hit.node.onDoubleClick(hit.localPoint)) return;
       }
 
-      const nodes = [...this.panels.values()].reverse();
-      for (const panel of nodes) {
-        if (panel.isInHeader(point)) {
+      // Double-click on panel header = toggle collapse
+      if (hit?.node instanceof Panel) {
+        const panel = hit.node;
+        if (hit.localPoint.y < panel.headerHeight) {
           panel.collapsed = !panel.collapsed;
-          break;
         }
       }
     });
 
-    // --- Touch support ---
+    // --- Touch support (translates to mouse events) ---
     let lastTouchTime = 0;
     let touchMoved = false;
 
@@ -688,15 +566,13 @@ child.showTooltip(hitNode, point.x, point.y);
       const touch = e.touches[0];
       touchMoved = false;
       const now = Date.now();
-      const mouseEvent = new MouseEvent("mousedown", {
+      canvas.dispatchEvent(new MouseEvent("mousedown", {
         clientX: touch.clientX, clientY: touch.clientY,
-      });
-      canvas.dispatchEvent(mouseEvent);
+      }));
       if (now - lastTouchTime < 300) {
-        const dblEvent = new MouseEvent("dblclick", {
+        canvas.dispatchEvent(new MouseEvent("dblclick", {
           clientX: touch.clientX, clientY: touch.clientY,
-        });
-        canvas.dispatchEvent(dblEvent);
+        }));
       }
       lastTouchTime = now;
     }, { passive: false });
@@ -714,9 +590,7 @@ child.showTooltip(hitNode, point.x, point.y);
           const rect = canvas.getBoundingClientRect();
           const canvasX = midX - rect.left;
           const canvasY = midY - rect.top;
-          // Zoom from pinch distance change
           const delta = this.lastPinchDist - dist;
-          // Pan from midpoint movement
           const panDx = midX - this.lastPinchMidX;
           const panDy = midY - this.lastPinchMidY;
           for (const child of this.scene.root.children) {
@@ -736,20 +610,17 @@ child.showTooltip(hitNode, point.x, point.y);
       if (e.touches.length !== 1) return;
       touchMoved = true;
       const touch = e.touches[0];
-      const mouseEvent = new MouseEvent("mousemove", {
+      canvas.dispatchEvent(new MouseEvent("mousemove", {
         clientX: touch.clientX, clientY: touch.clientY,
-      });
-      canvas.dispatchEvent(mouseEvent);
+      }));
     }, { passive: false });
 
     canvas.addEventListener("touchend", (e: TouchEvent) => {
       e.preventDefault();
       this.lastPinchDist = 0;
-      // Use changedTouches to get the final position (touches is empty on touchend)
       const endTouch = e.changedTouches[0];
       const coords = endTouch ? { clientX: endTouch.clientX, clientY: endTouch.clientY } : {};
       canvas.dispatchEvent(new MouseEvent("mouseup", coords));
-      // If no drag happened, also fire a click for detail panel detection
       if (!touchMoved && endTouch) {
         canvas.dispatchEvent(new MouseEvent("click", {
           clientX: endTouch.clientX, clientY: endTouch.clientY,
@@ -757,6 +628,7 @@ child.showTooltip(hitNode, point.x, point.y);
       }
     }, { passive: false });
   }
+
 
   /** Build context menu items based on what was right-clicked */
   private buildContextMenuItems(point: Vec2): MenuItem[] {
@@ -968,13 +840,6 @@ child.showTooltip(hitNode, point.x, point.y);
   }
 
   /** Handle panel resize drag */
-  private handleResize(point: Vec2) {
-    if (!this.resizeTarget) return;
-    const wp = this.resizeTarget.worldPosition();
-    this.resizeTarget.size.x = Math.max(150, point.x - wp.x);
-    this.resizeTarget.size.y = Math.max(80, point.y - wp.y);
-  }
-
   /** Render the dock bar for minimized panels */
   private renderDockBar(ctx: CanvasRenderingContext2D, w: number, h: number, panels: Panel[]): void {
     const statusH = this._statusBar.getHeight();
