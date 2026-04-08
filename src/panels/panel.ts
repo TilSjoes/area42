@@ -91,6 +91,10 @@ export class Panel extends SceneNode {
 
   /** v2: Recalculate contentOffset and contentSize based on current state */
   private updateContentGeometry() {
+    if (this.collapsed || this.minimized) {
+      this.contentSize = { x: 0, y: 0 };
+      return;
+    }
     const pad = this.compact ? 4 : 8;
     this.contentOffset = {
       x: pad,
