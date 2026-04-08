@@ -16,7 +16,7 @@ export type { HUDOptions } from "./core/hud.js";
 export { Renderer } from "./core/renderer.js";
 export type { RenderContext } from "./core/renderer.js";
 export { Scene, SceneNode, Container } from "./core/scene.js";
-export type { Vec2, Rect, Transform, Overflow, SceneNodeOptions } from "./core/scene.js";
+export type { Vec2, Rect, HitResult, Transform, Overflow, SceneNodeOptions } from "./core/scene.js";
 // Layout
 export { applyLayout, insets } from "./core/layout.js";
 export type { LayoutType as ChildLayoutType, Insets } from "./core/layout.js";

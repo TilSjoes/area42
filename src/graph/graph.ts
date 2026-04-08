@@ -1152,4 +1152,97 @@ export class Graph extends SceneNode {
   hideTooltip(): void {
     this.tooltip.visible = false;
   }
+  // --- v2.2: Pointer event handlers ---
+
+  /** Internal state for pointer-driven pan */
+  private _isPanning = false;
+  private _panStart: Vec2 = { x: 0, y: 0 };
+  private _panStartOffset: Vec2 = { x: 0, y: 0 };
+  /** Internal state for pointer-driven node drag */
+  private _dragNode: GraphNode | null = null;
+
+  onPointerDown(localPoint: Vec2, e: MouseEvent): boolean {
+    // Convert local point to world/canvas coordinates for existing methods
+    const wp = this.localToWorld(localPoint);
+
+    // Middle mouse or Ctrl+click: pan
+    if (e.button === 1 || (e.button === 0 && e.ctrlKey)) {
+      this._isPanning = true;
+      this._panStart = { x: wp.x, y: wp.y };
+      this._panStartOffset = { x: this.offsetX, y: this.offsetY };
+      return true;
+    }
+
+    // Left click: check for node hit
+    const hitNode = this.findNodeAt(wp.x, wp.y);
+    if (hitNode) {
+      if (e.shiftKey) {
+        this.toggleSelection(hitNode.id);
+      } else {
+        this._dragNode = hitNode;
+        this.startNodeDrag(hitNode);
+      }
+      return true;
+    }
+
+    // Check for edge hit (for hover highlight, consumed but no drag)
+    const hitEdge = this.findEdgeAt(wp.x, wp.y, 10);
+    if (hitEdge) {
+      return true;
+    }
+
+    return false;
+  }
+
+  onPointerMove(worldPoint: Vec2, _e: MouseEvent): void {
+    if (this._isPanning) {
+      const dx = worldPoint.x - this._panStart.x;
+      const dy = worldPoint.y - this._panStart.y;
+      this.offsetX = this._panStartOffset.x + dx;
+      this.offsetY = this._panStartOffset.y + dy;
+      return;
+    }
+
+    if (this._dragNode) {
+      this.dragNode(this._dragNode, worldPoint.x, worldPoint.y);
+      return;
+    }
+
+    // Hover: check for nodes and edges
+    const hitNode = this.findNodeAt(worldPoint.x, worldPoint.y);
+    if (hitNode) {
+      this.showTooltip(hitNode, worldPoint.x, worldPoint.y);
+      this.hoveredEdge = null;
+    } else {
+      this.hideTooltip();
+      const hitEdge = this.findEdgeAt(worldPoint.x, worldPoint.y, 10);
+      this.hoveredEdge = hitEdge;
+    }
+  }
+
+  onPointerUp(_worldPoint: Vec2, _e: MouseEvent): void {
+    if (this._isPanning) {
+      this._isPanning = false;
+    }
+    if (this._dragNode) {
+      this.endNodeDrag(this._dragNode);
+      this._dragNode = null;
+    }
+  }
+
+  onWheel(delta: number, localPoint: Vec2): boolean {
+    const wp = this.localToWorld(localPoint);
+    this.applyZoom(delta, wp.x, wp.y);
+    return true;
+  }
+
+  onDoubleClick(localPoint: Vec2): boolean {
+    const wp = this.localToWorld(localPoint);
+    const hitNode = this.findNodeAt(wp.x, wp.y);
+    if (hitNode) {
+      this.expandAsync(hitNode.id);
+      return true;
+    }
+    return false;
+  }
 }

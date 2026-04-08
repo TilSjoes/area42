@@ -1,12 +1,9 @@
 /**
- * Area42 Glass Panel — v2 Container
+ * Area42 Glass Panel — v2.2 Container with pointer events
  *
- * Floating, draggable, semi-transparent panel with glass morphism effect.
- * The signature UI element of Area42.
- *
- * v2: Panel is a proper Container with overflow:"hidden".
- * Children automatically clip to the content area (below the header).
- * The onContent() callback still works for backward compatibility.
+ * v2: Panel is a Container with overflow:"hidden", auto-clipping.
+ * v2.2: Panel owns its interactions — header buttons, drag, resize.
+ *       The HUD just routes findAt() results to Panel.onPointerDown().
  */
 
 import { SceneNode, Vec2 } from "../core/scene.js";
@@ -24,11 +21,10 @@ export interface PanelOptions {
   color?: string;
   titleColor?: string;
   compact?: boolean;
-  /** v2: clip children to panel bounds (default true) */
   clip?: boolean;
+  locked?: boolean;
 }
 
-/** Snap zone identifiers for edge-docking */
 export type SnapZone = 'top' | 'bottom' | 'left' | 'right' | 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right' | null;
 
 export class Panel extends SceneNode {
@@ -41,27 +37,29 @@ export class Panel extends SceneNode {
   titleColor: string;
   compact: boolean;
   onCloseCallback: (() => void) | null = null;
+  /** v2.2: When locked, panel cannot be dragged or resized */
+  locked: boolean;
 
-  /** Minimized state: panel shrinks to a small icon dot */
   minimized = false;
-  /** Saved position/size before minimize, for restoration */
   preMinimizePosition: { x: number; y: number } | null = null;
   preMinimizeSize: { x: number; y: number } | null = null;
   private minimizedDotSize = 24;
 
-  /** Saved position/size before snapping, for restore */
   private preSnapPosition: Vec2 | null = null;
   private preSnapSize: Vec2 | null = null;
-
-  /** Current snap zone (null = floating) */
   snapZone: SnapZone = null;
 
   headerHeight = 28;
   private cornerRadius = 8;
-  private dragging = false;
-  private dragOffset: Vec2 = { x: 0, y: 0 };
 
-  // Content render callback (v1 backward compat)
+  // v2.2: Internal drag/resize state (owned by Panel, not HUD)
+  private _dragging = false;
+  private _dragOffset: Vec2 = { x: 0, y: 0 };
+  private _resizing = false;
+  private _resizeStart: Vec2 = { x: 0, y: 0 };
+  private _resizeStartSize: Vec2 = { x: 0, y: 0 };
+
+  // v1 backward compat
   private contentRenderer: ((ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number) => void) | null = null;
 
   constructor(options: PanelOptions) {
@@ -79,17 +77,97 @@ export class Panel extends SceneNode {
     this.color = options.color || "rgba(123, 104, 238, 0.15)";
     this.titleColor = options.titleColor || "#7b68ee";
     this.compact = options.compact ?? false;
+    this.locked = options.locked ?? true;
 
     if (this.compact) {
       this.headerHeight = 22;
       this.cornerRadius = 6;
     }
 
-    // v2: Set content offset to below header + padding
     this.updateContentGeometry();
   }
 
-  /** v2: Recalculate contentOffset and contentSize based on current state */
+  // --- v2.2: Pointer event handlers ---
+
+  onPointerDown(localPoint: Vec2, e: MouseEvent): boolean {
+    if (this.minimized) {
+      // Click on minimized dot — restore
+      return true; // consumed, HUD handles restore via callback
+    }
+
+    const w = this.size.x;
+    const hh = this.headerHeight;
+
+    // Header button zone: right side of header
+    if (this.closable && localPoint.y < hh) {
+      // Close button: rightmost 16px
+      if (localPoint.x >= w - 18 && localPoint.x <= w - 2) {
+        if (this.onCloseCallback) this.onCloseCallback();
+        else this.visible = false;
+        return true;
+      }
+      // Minimize button
+      if (localPoint.x >= w - 34 && localPoint.x <= w - 18) {
+        this.minimize();
+        return true;
+      }
+      // Collapse button
+      if (localPoint.x >= w - 50 && localPoint.x <= w - 34) {
+        this.collapsed = !this.collapsed;
+        this.updateContentGeometry();
+        return true;
+      }
+    }
+
+    // Resize handle: bottom-right 12x12 corner
+    if (!this.collapsed && !this.locked) {
+      if (localPoint.x >= w - 12 && localPoint.y >= this.size.y - 12) {
+        this._resizing = true;
+        const wp = this.worldPosition();
+        this._resizeStart = { x: e.clientX ?? 0, y: e.clientY ?? 0 };
+        this._resizeStartSize = { x: this.size.x, y: this.size.y };
+        return true;
+      }
+    }
+
+    // Header drag
+    if (localPoint.y < hh && !this.locked) {
+      this._dragging = true;
+      const wp = this.worldPosition();
+      this._dragOffset = { x: e.clientX - wp.x, y: e.clientY - wp.y };
+      return true;
+    }
+
+    // Click in content area — don't consume, let children handle via tree
+    return false;
+  }
+
+  onPointerMove(worldPoint: Vec2, _e: MouseEvent): void {
+    if (this._dragging) {
+      this.position.x = worldPoint.x - this._dragOffset.x;
+      this.position.y = worldPoint.y - this._dragOffset.y;
+    }
+    if (this._resizing) {
+      const dx = worldPoint.x - this._resizeStart.x;
+      const dy = worldPoint.y - this._resizeStart.y;
+      this.size.x = Math.max(150, this._resizeStartSize.x + dx);
+      this.size.y = Math.max(80, this._resizeStartSize.y + dy);
+      this.updateContentGeometry();
+    }
+  }
+
+  onPointerUp(_worldPoint: Vec2, _e: MouseEvent): void {
+    this._dragging = false;
+    this._resizing = false;
+  }
+
+  /** Check if panel is currently being interacted with (drag or resize) */
+  isInteracting(): boolean {
+    return this._dragging || this._resizing;
+  }
+
+  // --- Content geometry ---
+
   private updateContentGeometry() {
     if (this.collapsed || this.minimized) {
       this.contentSize = { x: 0, y: 0 };
@@ -106,10 +184,6 @@ export class Panel extends SceneNode {
     };
   }
 
-  /**
-   * v2: Get the content area dimensions (useful for sizing children).
-   * Returns { width, height } of the area available for children.
-   */
   getContentSize(): { width: number; height: number } {
     const pad = this.compact ? 4 : 8;
     return {
@@ -118,7 +192,8 @@ export class Panel extends SceneNode {
     };
   }
 
-  /** Set a callback for when the close button is clicked */
+  // --- API ---
+
   onClose(callback: () => void) {
     this.onCloseCallback = callback;
     return this;
@@ -129,16 +204,15 @@ export class Panel extends SceneNode {
     return this;
   }
 
-  /** Minimize panel to a small icon dot */
   minimize(): void {
     if (!this.minimized) {
       this.preMinimizePosition = { x: this.position.x, y: this.position.y };
       this.preMinimizeSize = { x: this.size.x, y: this.size.y };
       this.minimized = true;
+      this.updateContentGeometry();
     }
   }
 
-  /** Restore panel from minimized state */
   restore(): void {
     if (this.minimized) {
       if (this.preMinimizePosition && this.preMinimizeSize) {
@@ -148,10 +222,10 @@ export class Panel extends SceneNode {
         this.size.y = this.preMinimizeSize.y;
       }
       this.minimized = false;
+      this.updateContentGeometry();
     }
   }
 
-  /** Snap panel to a zone within a container of given dimensions */
   snapTo(zone: SnapZone, containerW: number, containerH: number): void {
     if (zone === null) {
       if (this.preSnapPosition && this.preSnapSize) {
@@ -177,43 +251,34 @@ export class Panel extends SceneNode {
     switch (zone) {
       case 'top':
         this.position.x = margin; this.position.y = margin;
-        this.size.x = containerW - margin * 2; this.size.y = halfH;
-        break;
+        this.size.x = containerW - margin * 2; this.size.y = halfH; break;
       case 'bottom':
         this.position.x = margin; this.position.y = halfH + margin * 2;
-        this.size.x = containerW - margin * 2; this.size.y = halfH;
-        break;
+        this.size.x = containerW - margin * 2; this.size.y = halfH; break;
       case 'left':
         this.position.x = margin; this.position.y = margin;
-        this.size.x = halfW; this.size.y = containerH - margin * 2;
-        break;
+        this.size.x = halfW; this.size.y = containerH - margin * 2; break;
       case 'right':
         this.position.x = halfW + margin * 2; this.position.y = margin;
-        this.size.x = halfW; this.size.y = containerH - margin * 2;
-        break;
+        this.size.x = halfW; this.size.y = containerH - margin * 2; break;
       case 'top-left':
         this.position.x = margin; this.position.y = margin;
-        this.size.x = halfW; this.size.y = halfH;
-        break;
+        this.size.x = halfW; this.size.y = halfH; break;
       case 'top-right':
         this.position.x = halfW + margin * 2; this.position.y = margin;
-        this.size.x = halfW; this.size.y = halfH;
-        break;
+        this.size.x = halfW; this.size.y = halfH; break;
       case 'bottom-left':
         this.position.x = margin; this.position.y = halfH + margin * 2;
-        this.size.x = halfW; this.size.y = halfH;
-        break;
+        this.size.x = halfW; this.size.y = halfH; break;
       case 'bottom-right':
         this.position.x = halfW + margin * 2; this.position.y = halfH + margin * 2;
-        this.size.x = halfW; this.size.y = halfH;
-        break;
+        this.size.x = halfW; this.size.y = halfH; break;
     }
 
     this.snapZone = zone;
     this.updateContentGeometry();
   }
 
-  /** Detect which snap zone a position falls into, given container dimensions */
   static detectSnapZone(point: Vec2, containerW: number, containerH: number, threshold: number = 30): SnapZone {
     const nearTop = point.y < threshold;
     const nearBottom = point.y > containerH - threshold;
@@ -231,17 +296,67 @@ export class Panel extends SceneNode {
     return null;
   }
 
+  // --- Backward-compat drag API (used by old HUD code, kept for transition) ---
+
+  startDrag(point: Vec2) {
+    this._dragging = true;
+    const wp = this.worldPosition();
+    this._dragOffset = { x: point.x - wp.x, y: point.y - wp.y };
+  }
+
+  drag(point: Vec2) {
+    if (this._dragging) {
+      this.position.x = point.x - this._dragOffset.x;
+      this.position.y = point.y - this._dragOffset.y;
+    }
+  }
+
+  endDrag() {
+    this._dragging = false;
+  }
+
+  isInHeader(point: Vec2): boolean {
+    if (this.minimized) return false;
+    const wp = this.worldPosition();
+    return point.x >= wp.x && point.x <= wp.x + this.size.x &&
+           point.y >= wp.y && point.y <= wp.y + this.headerHeight;
+  }
+
+  isInCollapseButton(point: Vec2): boolean {
+    if (this.minimized || !this.closable) return false;
+    const wp = this.worldPosition();
+    const btnX = wp.x + this.size.x - 50;
+    return point.x >= btnX && point.x <= btnX + 16 &&
+           point.y >= wp.y && point.y <= wp.y + this.headerHeight;
+  }
+
+  isInCloseButton(point: Vec2): boolean {
+    if (this.minimized || !this.closable) return false;
+    const wp = this.worldPosition();
+    const btnX = wp.x + this.size.x - 18;
+    return point.x >= btnX && point.x <= btnX + 16 &&
+           point.y >= wp.y && point.y <= wp.y + this.headerHeight;
+  }
+
+  isInMinimizeButton(point: Vec2): boolean {
+    if (this.minimized || !this.closable) return false;
+    const wp = this.worldPosition();
+    const btnX = wp.x + this.size.x - 34;
+    return point.x >= btnX && point.x <= btnX + 16 &&
+           point.y >= wp.y && point.y <= wp.y + this.headerHeight;
+  }
+
+  // --- Rendering ---
+
   render(ctx: CanvasRenderingContext2D) {
-    // Minimized: render as a small colored dot with title initial
     if (this.minimized) {
       this.renderMinimizedDot(ctx);
       return;
     }
 
-    // v2: Update content geometry in case size changed (drag resize, snap)
     this.updateContentGeometry();
 
-    const { x, y } = { x: 0, y: 0 };
+    const x = 0, y = 0;
     const w = this.size.x;
     const h = this.collapsed ? this.headerHeight : this.size.y;
     const r = this.cornerRadius;
@@ -291,23 +406,15 @@ export class Panel extends SceneNode {
     ctx.letterSpacing = titleLetterSpacing;
     ctx.fillText(this.title.toUpperCase(), x + (this.compact ? 8 : 12), y + this.headerHeight / 2);
 
-    // Panel control buttons (right side of header)
+    // Panel control buttons
     if (this.closable) {
       ctx.fillStyle = "rgba(255,255,255,0.3)";
       ctx.font = this.compact ? "10px system-ui" : "12px system-ui";
       ctx.textAlign = "center";
 
-      // Collapse/expand button (triangle)
-      const colX = x + w - 42;
-      ctx.fillText(this.collapsed ? "\u25BC" : "\u25B2", colX, y + this.headerHeight / 2);
-
-      // Minimize button (en-dash)
-      const minX = x + w - 26;
-      ctx.fillText("\u2013", minX, y + this.headerHeight / 2);
-
-      // Close button
-      const clsX = x + w - 10;
-      ctx.fillText("\u00d7", clsX, y + this.headerHeight / 2);
+      ctx.fillText(this.collapsed ? "\u25BC" : "\u25B2", x + w - 42, y + this.headerHeight / 2);
+      ctx.fillText("\u2013", x + w - 26, y + this.headerHeight / 2);
+      ctx.fillText("\u00d7", x + w - 10, y + this.headerHeight / 2);
 
       ctx.textAlign = "left";
     }
@@ -320,8 +427,6 @@ export class Panel extends SceneNode {
       ctx.lineTo(x + w, y + this.headerHeight);
       ctx.stroke();
 
-      // v1 backward compat: contentRenderer callback
-      // This renders in the same coordinate space as before (absolute within panel)
       if (this.contentRenderer) {
         ctx.save();
         ctx.beginPath();
@@ -335,7 +440,7 @@ export class Panel extends SceneNode {
 
     ctx.restore();
 
-    // Resize handle (bottom-right corner)
+    // Resize handle
     if (!this.collapsed) {
       ctx.save();
       ctx.strokeStyle = "rgba(255,255,255,0.15)";
@@ -352,7 +457,7 @@ export class Panel extends SceneNode {
       ctx.restore();
     }
 
-    // Ambient glow effect
+    // Ambient glow
     if (this.glass) {
       ctx.save();
       ctx.shadowColor = this.titleColor.startsWith("#") ? this.titleColor : "#7b68ee";
@@ -362,18 +467,11 @@ export class Panel extends SceneNode {
       ctx.fill();
       ctx.restore();
     }
-
-    // NOTE: Children are rendered by Scene.renderNode() AFTER this render() call,
-    // with clipping and contentOffset applied automatically. No need to render
-    // children here — that's the v2 magic.
   }
 
-  /** Render the minimized dot icon */
   private renderMinimizedDot(ctx: CanvasRenderingContext2D): void {
     const s = this.minimizedDotSize;
-    const cx = s / 2;
-    const cy = s / 2;
-    const r = s / 2 - 2;
+    const cx = s / 2, cy = s / 2, r = s / 2 - 2;
 
     ctx.save();
     ctx.shadowColor = this.titleColor.startsWith("#") ? this.titleColor : "#7b68ee";
@@ -396,7 +494,6 @@ export class Panel extends SceneNode {
     ctx.restore();
   }
 
-  /** Override contains for minimized hit testing */
   override contains(point: Vec2): boolean {
     if (this.minimized) {
       const wp = this.worldPosition();
@@ -419,60 +516,5 @@ export class Panel extends SceneNode {
     ctx.lineTo(x, y + r);
     ctx.quadraticCurveTo(x, y, x + r, y);
     ctx.closePath();
-  }
-
-  // Drag handling
-  startDrag(point: Vec2) {
-    this.dragging = true;
-    const wp = this.worldPosition();
-    this.dragOffset = { x: point.x - wp.x, y: point.y - wp.y };
-  }
-
-  drag(point: Vec2) {
-    if (this.dragging) {
-      this.position.x = point.x - this.dragOffset.x;
-      this.position.y = point.y - this.dragOffset.y;
-    }
-  }
-
-  endDrag() {
-    this.dragging = false;
-  }
-
-  isInHeader(point: Vec2): boolean {
-    if (this.minimized) return false;
-    const wp = this.worldPosition();
-    return point.x >= wp.x && point.x <= wp.x + this.size.x &&
-           point.y >= wp.y && point.y <= wp.y + this.headerHeight;
-  }
-
-  /** Check if a point hits the collapse button */
-  isInCollapseButton(point: Vec2): boolean {
-    if (this.minimized || !this.closable) return false;
-    const wp = this.worldPosition();
-    const btnX = wp.x + this.size.x - 50;
-    const btnY = wp.y;
-    return point.x >= btnX && point.x <= btnX + 16 &&
-           point.y >= btnY && point.y <= btnY + this.headerHeight;
-  }
-
-  /** Check if a point hits the close button */
-  isInCloseButton(point: Vec2): boolean {
-    if (this.minimized || !this.closable) return false;
-    const wp = this.worldPosition();
-    const btnX = wp.x + this.size.x - 18;
-    const btnY = wp.y;
-    return point.x >= btnX && point.x <= btnX + 16 &&
-           point.y >= btnY && point.y <= btnY + this.headerHeight;
-  }
-
-  /** Check if a point hits the minimize button */
-  isInMinimizeButton(point: Vec2): boolean {
-    if (this.minimized || !this.closable) return false;
-    const wp = this.worldPosition();
-    const btnX = wp.x + this.size.x - 34;
-    const btnY = wp.y;
-    return point.x >= btnX && point.x <= btnX + 16 &&
-           point.y >= btnY && point.y <= btnY + this.headerHeight;
   }
 }

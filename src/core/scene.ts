@@ -6,6 +6,7 @@
  *
  * v2.0 (Session 1): overflow, contentOffset, clipping, coordinate transforms
  * v2.1 (Session 2): layout (vertical/horizontal/grid), style inheritance
+ * v2.2 (Session 6): pointer event interface, HitResult, unified event dispatch
  */
 
 import { applyLayout, type LayoutType as ChildLayoutType, type Insets } from "./layout.js";
@@ -31,6 +32,12 @@ export interface Transform {
 }
 
 export type Overflow = "visible" | "hidden";
+
+/** v2.2: Result of a hit test — includes the hit node and the point in its local space */
+export interface HitResult {
+  node: SceneNode;
+  localPoint: Vec2;
+}
 
 export interface SceneNodeOptions {
   id?: string;
@@ -64,37 +71,23 @@ export class SceneNode {
   /**
    * v2: offset applied to children's coordinate system.
    * Used by Panel to push children below the header bar.
-   * Children render at (contentOffset.x, contentOffset.y) within this container.
    */
   contentOffset: Vec2 = { x: 0, y: 0 };
 
   /**
    * v2: content size available for children (after padding/header).
    * If null, defaults to full size minus contentOffset.
-   * Used for clip rect calculation when overflow is "hidden".
    */
   contentSize: Vec2 | null = null;
 
   // --- v2.1: Layout ---
-
-  /** Layout algorithm for children. "none" = manual positioning (default). */
   childLayout: ChildLayoutType = "none";
-
-  /** Gap between children when using layout */
   gap: number = 0;
-
-  /** Padding inside the container for layout */
   padding: Insets = { top: 0, right: 0, bottom: 0, left: 0 };
-
-  /** If true, this child opts out of parent layout (positioned manually) */
   layoutManual: boolean = false;
 
   // --- v2.1: Style ---
-
-  /** Partial style overrides — unset fields inherit from parent */
   style?: PartialStyle;
-
-  /** Cache: resolved style (invalidated on parent change) */
   private _resolvedStyle: Style | null = null;
   private _styleGeneration = 0;
   private static _globalStyleGen = 0;
@@ -103,6 +96,10 @@ export class SceneNode {
   targetPosition: Vec2 | null = null;
   targetOpacity: number | null = null;
   animSpeed = 0.08;
+
+  // --- v2.2: Pointer event cursor hint ---
+  /** Cursor to show when this node is hovered (default: null = inherit) */
+  cursor: string | null = null;
 
   constructor(options: SceneNodeOptions = {}) {
     this.id = options.id || `node-${nextId++}`;
@@ -135,7 +132,6 @@ export class SceneNode {
     return this;
   }
 
-  /** Remove all children */
   clear() {
     for (const child of this.children) {
       child.parent = null;
@@ -154,7 +150,16 @@ export class SceneNode {
     return null;
   }
 
-  /** Animate toward target position/opacity */
+  /** Walk up the tree to find the nearest ancestor of a given type */
+  closest<T extends SceneNode>(type: new (...args: any[]) => T): T | null {
+    let node: SceneNode | null = this.parent;
+    while (node) {
+      if (node instanceof type) return node;
+      node = node.parent;
+    }
+    return null;
+  }
+
   update(dt: number) {
     if (this.targetPosition) {
       this.position.x += (this.targetPosition.x - this.position.x) * this.animSpeed;
@@ -173,7 +178,6 @@ export class SceneNode {
       }
     }
 
-    // v2.1: Apply layout to children before they update
     if (this.childLayout !== "none" && this.children.length > 0) {
       const cs = this.getContentDimensions();
       applyLayout(this.childLayout, this.children, cs.w, cs.h, this.gap, this.padding);
@@ -184,9 +188,55 @@ export class SceneNode {
     }
   }
 
-  // --- v2.1: Style resolution ---
+  // --- v2.2: Pointer Event Handlers (override in subclasses) ---
 
-  /** Get the fully resolved style for this container (inherits from parents) */
+  /**
+   * Called when this node receives a pointer down event.
+   * @param localPoint - Point in this node's local coordinate space
+   * @param e - Original mouse event
+   * @returns true if the event was consumed (stops propagation)
+   */
+  onPointerDown?(localPoint: Vec2, e: MouseEvent): boolean;
+
+  /**
+   * Called on the active node during drag (after onPointerDown returned true).
+   * @param worldPoint - Point in world/canvas space (for drag tracking)
+   * @param e - Original mouse event
+   */
+  onPointerMove?(worldPoint: Vec2, e: MouseEvent): void;
+
+  /**
+   * Called on the active node when the mouse button is released.
+   * @param worldPoint - Point in world/canvas space
+   * @param e - Original mouse event
+   */
+  onPointerUp?(worldPoint: Vec2, e: MouseEvent): void;
+
+  /** Called when the pointer enters this node's bounds */
+  onPointerEnter?(): void;
+
+  /** Called when the pointer leaves this node's bounds */
+  onPointerLeave?(): void;
+
+  /**
+   * Called when the scroll wheel is used over this node.
+   * @returns true if consumed
+   */
+  onWheel?(delta: number, localPoint: Vec2): boolean;
+
+  /**
+   * Called on double-click.
+   * @returns true if consumed
+   */
+  onDoubleClick?(localPoint: Vec2): boolean;
+
+  /**
+   * Called on right-click. Return context menu items or null.
+   */
+  onContextMenu?(localPoint: Vec2): Array<{ label: string; action: () => void }> | null;
+
+  // --- Style resolution ---
+
   resolvedStyle(): Style {
     if (this._resolvedStyle && this._styleGeneration === SceneNode._globalStyleGen) {
       return this._resolvedStyle;
@@ -196,14 +246,12 @@ export class SceneNode {
     return this._resolvedStyle;
   }
 
-  /** Invalidate style cache (call when changing style) */
   invalidateStyle() {
     SceneNode._globalStyleGen++;
   }
 
-  // --- v2: Coordinate Transforms ---
+  // --- Coordinate Transforms ---
 
-  /** Convert a point from this container's local space to world space */
   localToWorld(point: Vec2): Vec2 {
     let x = point.x + this.position.x;
     let y = point.y + this.position.y;
@@ -216,34 +264,26 @@ export class SceneNode {
     return { x, y };
   }
 
-  /** Convert a point from world space to this container's local space */
   worldToLocal(point: Vec2): Vec2 {
     const wp = this.localToWorld({ x: 0, y: 0 });
     return { x: point.x - wp.x, y: point.y - wp.y };
   }
 
-  /** World position (accumulated from parent chain) — backward compatible */
   worldPosition(): Vec2 {
     return this.localToWorld({ x: 0, y: 0 });
   }
 
-  // --- v2: Bounds ---
+  // --- Bounds ---
 
-  /** Local bounds of this container */
   getLocalBounds(): Rect {
     return { x: 0, y: 0, w: this.size.x, h: this.size.y };
   }
 
-  /** World bounds of this container */
   getWorldBounds(): Rect {
     const wp = this.worldPosition();
     return { x: wp.x, y: wp.y, w: this.size.x, h: this.size.y };
   }
 
-  /**
-   * v2.1: Get the content dimensions (width/height available for children).
-   * Accounts for contentOffset and contentSize.
-   */
   getContentDimensions(): { w: number; h: number } {
     if (this.contentSize) {
       return { w: this.contentSize.x, h: this.contentSize.y };
@@ -254,11 +294,6 @@ export class SceneNode {
     };
   }
 
-  /**
-   * v2: Get the content clip rect in local coordinates.
-   * This is the area where children are allowed to render.
-   * Returns null if overflow is "visible" (no clipping).
-   */
   getContentClipRect(): Rect | null {
     if (this.overflow !== "hidden") return null;
     const cs = this.contentSize;
@@ -270,17 +305,12 @@ export class SceneNode {
     };
   }
 
-  /** Hit test — backward compatible */
   contains(point: Vec2): boolean {
     const wp = this.worldPosition();
     return point.x >= wp.x && point.x <= wp.x + this.size.x &&
            point.y >= wp.y && point.y <= wp.y + this.size.y;
   }
 
-  /**
-   * v2: Check if a world-space point is inside this container's
-   * clipped content area (respects parent clipping chain).
-   */
   isPointInClipChain(worldPoint: Vec2): boolean {
     let node: SceneNode | null = this;
     while (node) {
@@ -320,17 +350,6 @@ export class Scene {
     this.renderNode(ctx, this.root);
   }
 
-  /**
-   * v2: Render with automatic clipping and content offset.
-   *
-   * For each container:
-   *   1. save(), translate to position
-   *   2. render self (background, chrome, etc.)
-   *   3. if overflow=hidden: clip to content area
-   *   4. translate by contentOffset
-   *   5. render children (they draw in content-local space)
-   *   6. restore()
-   */
   private renderNode(ctx: CanvasRenderingContext2D, node: SceneNode) {
     if (!node.visible) return;
 
@@ -338,10 +357,8 @@ export class Scene {
     ctx.globalAlpha *= node.opacity;
     ctx.translate(node.position.x, node.position.y);
 
-    // 1. Render self (panel chrome, graph background, etc.)
     node.render(ctx);
 
-    // 2. Set up clipping + content offset for children
     if (node.children.length > 0) {
       ctx.save();
 
@@ -352,10 +369,8 @@ export class Scene {
         ctx.clip();
       }
 
-      // Translate to content area origin
       ctx.translate(node.contentOffset.x, node.contentOffset.y);
 
-      // 3. Render children (clipped if parent clips)
       for (const child of node.children) {
         this.renderNode(ctx, child);
       }
@@ -367,48 +382,46 @@ export class Scene {
   }
 
   /**
-   * v2: Hit testing respects clipping.
-   *
-   * Walk tree front-to-back (last child first).
-   * Transform points through the hierarchy.
-   * Skip subtrees that are clipped out.
+   * v2.2: Hit testing returns HitResult with local point.
+   * Walk tree front-to-back (last child first), respects clipping.
    */
-  findAt(point: Vec2): SceneNode | null {
-    return this.findAtNode(this.root, point, point.x, point.y);
+  findAt(point: Vec2): HitResult | null {
+    return this.findAtNode(this.root, point.x, point.y);
   }
 
-  private findAtNode(node: SceneNode, worldPoint: Vec2, localX: number, localY: number): SceneNode | null {
+  private findAtNode(node: SceneNode, localX: number, localY: number): HitResult | null {
     if (!node.visible || !node.interactive) return null;
 
-    // Transform to this node's local space
     const nx = localX - node.position.x;
     const ny = localY - node.position.y;
 
-    // If this node clips, check if point is inside content area
+    // Clipping check
     if (node.overflow === "hidden" && node.children.length > 0) {
       const clip = node.getContentClipRect()!;
       const inContent = nx >= clip.x && nx <= clip.x + clip.w &&
                         ny >= clip.y && ny <= clip.y + clip.h;
       if (!inContent) {
-        // Point outside clipped area — still check if it hits this node itself
-        // (e.g., panel header is outside the content clip area)
         const inBounds = nx >= 0 && nx <= node.size.x && ny >= 0 && ny <= node.size.y;
-        if (inBounds && node !== this.root) return node;
+        if (inBounds && node !== this.root) {
+          return { node, localPoint: { x: nx, y: ny } };
+        }
         return null;
       }
     }
 
-    // Check children first (front = last in array)
+    // Children first (front = last in array)
     const childLocalX = nx - node.contentOffset.x;
     const childLocalY = ny - node.contentOffset.y;
     for (let i = node.children.length - 1; i >= 0; i--) {
-      const found = this.findAtNode(node.children[i], worldPoint, childLocalX, childLocalY);
+      const found = this.findAtNode(node.children[i], childLocalX, childLocalY);
       if (found) return found;
     }
 
-    // Check self
+    // Self
     const inBounds = nx >= 0 && nx <= node.size.x && ny >= 0 && ny <= node.size.y;
-    if (inBounds && node !== this.root) return node;
+    if (inBounds && node !== this.root) {
+      return { node, localPoint: { x: nx, y: ny } };
+    }
 
     return null;
   }
