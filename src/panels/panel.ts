@@ -178,21 +178,23 @@ export class Panel extends SceneNode {
       return;
     }
     const pad = this.compact ? 4 : 8;
+    const bottomPad = this.compact ? 8 : 16;
     this.contentOffset = {
       x: pad,
       y: this.headerHeight + pad,
     };
     this.contentSize = {
       x: this.size.x - pad * 2,
-      y: this.size.y - this.headerHeight - pad * 2,
+      y: this.size.y - this.headerHeight - pad - bottomPad,
     };
   }
 
   getContentSize(): { width: number; height: number } {
     const pad = this.compact ? 4 : 8;
+    const bottomPad = this.compact ? 8 : 16;
     return {
       width: this.size.x - pad * 2,
-      height: this.size.y - this.headerHeight - pad * 2,
+      height: this.size.y - this.headerHeight - pad - bottomPad,
     };
   }
 
