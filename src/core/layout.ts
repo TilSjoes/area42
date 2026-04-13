@@ -103,8 +103,8 @@ function layoutHorizontal(
   for (const child of children) {
     child.position.x = x;
     child.position.y = startY;
-    // Stretch height to fill container
-    child.size.y = height;
+    // Expand height to fill container (never shrink)
+    if (child.size.y < height) child.size.y = height;
     x += child.size.x + gap;
   }
 }
@@ -132,7 +132,7 @@ function layoutGrid(
   for (const child of children) {
     child.position.x = startX + col * (cellW + gap);
     child.position.y = rowY;
-    child.size.x = cellW;
+    if (child.size.x < cellW) child.size.x = cellW;
     rowH = Math.max(rowH, child.size.y);
 
     col++;
