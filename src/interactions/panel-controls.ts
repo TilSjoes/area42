@@ -373,10 +373,11 @@ export class ControlManager {
       const btn = document.createElement("button");
       btn.className = "a42-radio-btn";
       btn.textContent = label;
-      if (i === opts.value)
+      if (i === (opts.value ?? 0)) btn.classList.add("active");
       wrap.appendChild(btn);
       buttons.push(btn);
     });
+    div.appendChild(wrap);
 
     const control: RadioGroupControl = {
       type: "radioGroup",
@@ -401,7 +402,7 @@ export class ControlManager {
     return control;
   }
 
-  // ─── Slider ───
+  // ─── Slider 
 
   slider(panel: any, opts: {
     x: number; y: number;
@@ -474,6 +475,7 @@ export class ControlManager {
     });
 
     this.controls.push(control);
+    div.appendChild(wrap);
     return control;
   }
 
@@ -522,6 +524,7 @@ export class ControlManager {
 
     wrap.addEventListener("click", () => control.setValue(!control.value));
     this.controls.push(control);
+    div.appendChild(wrap);
     return control;
   }
 
