@@ -207,11 +207,19 @@ export class Panel extends SceneNode {
    * Measure children and resize panel height to fit.
    * Accounts for header, padding, and bottom margin.
    */
+  private _autoSized = false;
+
   override update(dt: number): void {
-    if (this.autoSize && this.children.length > 0) {
+    if (this.autoSize && !this._autoSized && this.children.length > 0) {
       this.fitContent();
+      this._autoSized = true;
     }
     super.update(dt);
+  }
+
+  /** Re-trigger auto-size (e.g. after adding/removing children) */
+  invalidateSize(): void {
+    this._autoSized = false;
   }
 
   override fitContent(): void {
