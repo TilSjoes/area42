@@ -93,13 +93,19 @@ export class BoundMetric extends SceneNode {
     ctx.textBaseline = "top";
     ctx.fillText(this._label.toUpperCase(), 12, 8);
 
-    // Value
+    // Value — scale font to fit available width
     ctx.fillStyle = accent;
-    ctx.font = `bold 22px ${s.fontFamily}`;
+    const maxW = w - 16;
+    let fontSize = 22;
+    ctx.font = `bold ${fontSize}px ${s.fontFamily}`;
     ctx.letterSpacing = "0px";
+    while (fontSize > 10 && ctx.measureText(this._value).width > maxW) {
+      fontSize -= 2;
+      ctx.font = `bold ${fontSize}px ${s.fontFamily}`;
+    }
     ctx.shadowColor = accent;
     ctx.shadowBlur = 6;
-    ctx.fillText(this._value, 12, 26);
+    ctx.fillText(this._value, 12, 28 - (22 - fontSize) / 2);
     ctx.shadowBlur = 0;
   }
 
