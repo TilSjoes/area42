@@ -294,6 +294,45 @@ export class SceneNode {
     };
   }
 
+  /**
+   * Measure children and resize this node to fit them.
+   * For vertical/horizontal layouts: sums child sizes + gaps + padding.
+   * For grid: computes rows needed.
+   * Only adjusts the layout axis (height for vertical, width for horizontal).
+   * Call after children are added but before first render.
+   */
+  fitContent(): void {
+    const managed = this.children.filter(c => c.visible && !c.layoutManual);
+    if (managed.length === 0) return;
+
+    const pad = this.padding;
+
+    if (this.childLayout === "vertical") {
+      let totalH = pad.top + pad.bottom;
+      for (const child of managed) {
+        totalH += child.size.y;
+      }
+      totalH += Math.max(0, managed.length - 1) * this.gap;
+      this.size.y = this.contentOffset.y + totalH;
+    } else if (this.childLayout === "horizontal") {
+      let totalW = pad.left + pad.right;
+      for (const child of managed) {
+        totalW += child.size.x;
+      }
+      totalW += Math.max(0, managed.length - 1) * this.gap;
+      this.size.x = this.contentOffset.x + totalW;
+    } else if (this.childLayout === "grid") {
+      if (managed.length === 0) return;
+      const childW = managed[0].size.x;
+      const innerW = this.size.x - pad.left - pad.right - this.contentOffset.x;
+      const cols = Math.max(1, Math.floor((innerW + this.gap) / (childW + this.gap)));
+      const rows = Math.ceil(managed.length / cols);
+      const rowH = managed[0].size.y;
+      const totalH = pad.top + pad.bottom + rows * rowH + Math.max(0, rows - 1) * this.gap;
+      this.size.y = this.contentOffset.y + totalH;
+    }
+  }
+
   getContentClipRect(): Rect | null {
     if (this.overflow !== "hidden") return null;
     const cs = this.contentSize;
