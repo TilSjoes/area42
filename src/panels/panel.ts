@@ -223,7 +223,33 @@ export class Panel extends SceneNode {
   }
 
   override fitContent(): void {
-    super.fitContent();
+    const managed = this.children.filter(c => c.visible && !c.layoutManual);
+    if (managed.length === 0) return;
+
+    const pad = this.compact ? 4 : 8;
+    const bottomPad = this.compact ? 8 : 16;
+    const nodePad = this.padding; // SceneNode-level padding from insets()
+
+    if (this.childLayout === "vertical") {
+      let totalH = nodePad.top + nodePad.bottom;
+      for (const child of managed) totalH += child.size.y;
+      totalH += Math.max(0, managed.length - 1) * this.gap;
+      this.size.y = this.headerHeight + pad + totalH + bottomPad;
+    } else if (this.childLayout === "horizontal") {
+      let maxH = 0;
+      for (const child of managed) maxH = Math.max(maxH, child.size.y);
+      this.size.y = this.headerHeight + pad + nodePad.top + nodePad.bottom + maxH + bottomPad;
+    } else if (this.childLayout === "grid") {
+      if (managed.length === 0) return;
+      const childW = managed[0].size.x;
+      const innerW = this.size.x - pad * 2 - nodePad.left - nodePad.right;
+      const cols = Math.max(1, Math.floor((innerW + this.gap) / (childW + this.gap)));
+      const rows = Math.ceil(managed.length / cols);
+      const rowH = managed[0].size.y;
+      const totalH = nodePad.top + nodePad.bottom + rows * rowH + Math.max(0, rows - 1) * this.gap;
+      this.size.y = this.headerHeight + pad + totalH + bottomPad;
+    }
+
     this.updateContentGeometry();
   }
 
