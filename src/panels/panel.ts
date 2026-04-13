@@ -40,6 +40,11 @@ export class Panel extends SceneNode {
   /** v2.2: When locked, panel cannot be dragged or resized */
   locked: boolean;
 
+  /** Check lock state — respects both per-panel and global lock */
+  get isLocked(): boolean {
+    return this.locked || !!(globalThis as any).__area42_panels_locked;
+  }
+
   minimized = false;
   preMinimizePosition: { x: number; y: number } | null = null;
   preMinimizeSize: { x: number; y: number } | null = null;
@@ -77,7 +82,7 @@ export class Panel extends SceneNode {
     this.color = options.color || "rgba(123, 104, 238, 0.15)";
     this.titleColor = options.titleColor || "#7b68ee";
     this.compact = options.compact ?? false;
-    this.locked = options.locked ?? true;
+    this.locked = options.locked ?? false;
 
     if (this.compact) {
       this.headerHeight = 22;
@@ -120,21 +125,20 @@ export class Panel extends SceneNode {
     }
 
     // Resize handle: bottom-right 12x12 corner
-    if (!this.collapsed && !this.locked) {
+    if (!this.collapsed && !this.isLocked) {
       if (localPoint.x >= w - 12 && localPoint.y >= this.size.y - 12) {
         this._resizing = true;
         const wp = this.worldPosition();
-        this._resizeStart = { x: e.clientX ?? 0, y: e.clientY ?? 0 };
+        this._resizeStart = { x: wp.x + localPoint.x, y: wp.y + localPoint.y };
         this._resizeStartSize = { x: this.size.x, y: this.size.y };
         return true;
       }
     }
 
     // Header drag
-    if (localPoint.y < hh && !this.locked) {
+    if (localPoint.y < hh && !this.isLocked) {
       this._dragging = true;
-      const wp = this.worldPosition();
-      this._dragOffset = { x: e.clientX - wp.x, y: e.clientY - wp.y };
+      this._dragOffset = { x: localPoint.x, y: localPoint.y };
       return true;
     }
 

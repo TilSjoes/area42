@@ -849,8 +849,8 @@ export class Graph extends SceneNode {
 
     const graphCenterX = (minX + maxX) / 2;
     const graphCenterY = (minY + maxY) / 2;
-    this.offsetX = this.size.x / 2 - graphCenterX * this.zoom;
-    this.offsetY = this.size.y / 2 - graphCenterY * this.zoom;
+    this.offsetX = this.size.x / 2 - (this.centerX + graphCenterX) * this.zoom;
+    this.offsetY = this.size.y / 2 - (this.centerY + graphCenterY) * this.zoom;
   }
 
   /** Select all nodes */

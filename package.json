@@ -4,13 +4,13 @@
   "description": "Futuristic HUD visualization engine for real-time system monitoring",
   "type": "module",
   "main": "dist/area42.js",
-  "module": "dist/area42.mjs",
-  "types": "dist/area42.d.ts",
+  "module": "dist/area42.js",
+  "types": "dist/index.d.ts",
   "exports": {
     ".": {
-      "import": "./dist/area42.mjs",
-      "require": "./dist/area42.js",
-      "types": "./dist/area42.d.ts"
+      "import": "./dist/area42.js",
+      "require": "./dist/area42.umd.cjs",
+      "types": "./dist/index.d.ts"
     }
   },
   "scripts": {
