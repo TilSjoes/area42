@@ -316,11 +316,14 @@ export class SceneNode {
       this.size.y = this.contentOffset.y + totalH;
     } else if (this.childLayout === "horizontal") {
       let totalW = pad.left + pad.right;
+      let maxH = 0;
       for (const child of managed) {
         totalW += child.size.x;
+        maxH = Math.max(maxH, child.size.y);
       }
       totalW += Math.max(0, managed.length - 1) * this.gap;
       this.size.x = this.contentOffset.x + totalW;
+      this.size.y = this.contentOffset.y + pad.top + pad.bottom + maxH;
     } else if (this.childLayout === "grid") {
       if (managed.length === 0) return;
       const childW = managed[0].size.x;
