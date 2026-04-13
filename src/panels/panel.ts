@@ -23,6 +23,7 @@ export interface PanelOptions {
   compact?: boolean;
   clip?: boolean;
   locked?: boolean;
+  autoSize?: boolean;
 }
 
 export type SnapZone = 'top' | 'bottom' | 'left' | 'right' | 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right' | null;
@@ -39,6 +40,9 @@ export class Panel extends SceneNode {
   onCloseCallback: (() => void) | null = null;
   /** v2.2: When locked, panel cannot be dragged or resized */
   locked: boolean;
+
+  /** v3: Auto-resize height to fit children */
+  autoSize: boolean;
 
   /** Check lock state — respects both per-panel and global lock */
   get isLocked(): boolean {
@@ -83,6 +87,7 @@ export class Panel extends SceneNode {
     this.titleColor = options.titleColor || "#7b68ee";
     this.compact = options.compact ?? false;
     this.locked = options.locked ?? false;
+    this.autoSize = (options as any).autoSize ?? false;
 
     if (this.compact) {
       this.headerHeight = 22;
@@ -196,6 +201,22 @@ export class Panel extends SceneNode {
       width: this.size.x - pad * 2,
       height: this.size.y - this.headerHeight - pad - bottomPad,
     };
+  }
+
+  /**
+   * Measure children and resize panel height to fit.
+   * Accounts for header, padding, and bottom margin.
+   */
+  override update(dt: number): void {
+    if (this.autoSize && this.children.length > 0) {
+      this.fitContent();
+    }
+    super.update(dt);
+  }
+
+  override fitContent(): void {
+    super.fitContent();
+    this.updateContentGeometry();
   }
 
   // --- API ---
