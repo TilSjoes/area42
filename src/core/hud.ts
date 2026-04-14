@@ -631,22 +631,30 @@ if (panel.minimized) {        if (panel.contains(point)) return panel;        co
 
 
   /** Build context menu items based on what was right-clicked */
+  /** Find all Graph instances in the scene tree */
+  private findAllGraphs(): Graph[] {
+    const graphs: Graph[] = [];
+    const walk = (node: SceneNode) => {
+      if (node instanceof Graph) graphs.push(node);
+      for (const child of node.children) walk(child);
+    };
+    walk(this.scene.root);
+    return graphs;
+  }
+
   private buildContextMenuItems(point: Vec2): MenuItem[] {
-    for (const child of this.scene.root.children) {
-      if (child instanceof Graph) {
-        const hitNode = child.findNodeAt(point.x, point.y);
-        if (hitNode) {
-          return this.buildNodeContextMenu(child, hitNode);
-        }
+    const graphs = this.findAllGraphs();
+    for (const g of graphs) {
+      const hitNode = g.findNodeAt(point.x, point.y);
+      if (hitNode) {
+        return this.buildNodeContextMenu(g, hitNode);
       }
     }
     // Check for edge right-click
-    for (const child of this.scene.root.children) {
-      if (child instanceof Graph) {
-        const hitEdge = child.findEdgeAt(point.x, point.y, 10);
-        if (hitEdge) {
-          return this.buildEdgeContextMenu(child, hitEdge, point);
-        }
+    for (const g of graphs) {
+      const hitEdge = g.findEdgeAt(point.x, point.y, 10);
+      if (hitEdge) {
+        return this.buildEdgeContextMenu(g, hitEdge, point);
       }
     }
 
@@ -721,7 +729,7 @@ if (panel.minimized) {        if (panel.contains(point)) return panel;        co
     return [
       { label: "Reset Layout", icon: "↻", shortcut: "R", action: () => { for (const child of this.scene.root.children) { if (child instanceof Graph) { child.resetPositions(); } } } },
       { label: "Clear Selection", icon: "✖", shortcut: "Esc", action: () => { for (const child of this.scene.root.children) { if (child instanceof Graph) { child.clearSelection(); } } } },
-      { label: "Save Positions", icon: "💾", action: () => { for (const child of this.scene.root.children) { if (child instanceof Graph) { child.savePositions(); } } } },
+      { label: "Save Positions", icon: "💾", action: () => { for (const g of this.findAllGraphs()) g.savePositions(); } },
       { label: "", separator: true, action: () => {} },
       { label: this.gridVisible ? "Hide Grid" : "Show Grid", icon: "#", shortcut: "G", action: () => { this.gridVisible = !this.gridVisible; } },
       { label: "", separator: true, action: () => {} },
