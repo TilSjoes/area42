@@ -863,17 +863,38 @@ export class Graph extends SceneNode {
   /** Reset all positions, clear localStorage, reheat */
   resetPositions(): void {
     this.clearPositions();
-    for (const node of this.nodes.values()) {
-      node.pinned = false;
-      node.x = Math.random() * 400 - 200;
-      node.y = Math.random() * 400 - 200;
-      node.vx = 0;
-      node.vy = 0;
+    if (this.defaultLayout) {
+      // Use structured default layout
+      for (const node of this.nodes.values()) {
+        const pos = this.defaultLayout[node.id];
+        if (pos) {
+          node.x = pos.x;
+          node.y = pos.y;
+          node.pinned = true;
+        } else {
+          node.pinned = false;
+          node.x = Math.random() * 400 - 200;
+          node.y = Math.random() * 400 - 200;
+        }
+        node.vx = 0;
+        node.vy = 0;
+      }
+      // Don't reheat — positions are fixed
+      this.alpha = this.alphaMin;
+    } else {
+      for (const node of this.nodes.values()) {
+        node.pinned = false;
+        node.x = Math.random() * 400 - 200;
+        node.y = Math.random() * 400 - 200;
+        node.vx = 0;
+        node.vy = 0;
+      }
+      this.reheat(1.0);
     }
     this.offsetX = 0;
     this.offsetY = 0;
     this.zoom = 1.0;
-    this.reheat(1.0);
+    setTimeout(() => this.fitToView(), 100);
   }
 
   /**
@@ -1040,6 +1061,9 @@ export class Graph extends SceneNode {
     node.pinned = true;
     this.reheat(0.3);
   }
+
+  /** Default layout positions — used by resetPositions() if set */
+  defaultLayout: Record<string, { x: number; y: number }> | null = null;
 
   /** Grid snap size for nodes (0 = disabled) */
   gridSnap = 20;
