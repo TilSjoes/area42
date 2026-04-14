@@ -92,6 +92,13 @@ export class DetailPanel extends Panel {
     this.scrollY = Math.max(0, Math.min(this.maxScrollY, this.scrollY + deltaY * 0.5));
   }
 
+  /** Handle wheel events for scrolling */
+  onWheel(delta: number, _localPoint: { x: number; y: number }): boolean {
+    if (!this.detail || this.maxScrollY <= 0) return false;
+    this.scroll(delta);
+    return true; // consume the event
+  }
+
   private calculateContentHeight(d: NodeDetail): number {
     let h = 0;
     if (d.subtitle) h += 18;
