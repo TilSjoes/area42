@@ -183,7 +183,7 @@ export class Panel extends SceneNode {
       return;
     }
     const pad = this.compact ? 4 : 8;
-    const bottomPad = this.compact ? 8 : 16;
+    const bottomPad = this.compact ? 4 : 8;
     this.contentOffset = {
       x: pad,
       y: this.headerHeight + pad,
@@ -196,7 +196,7 @@ export class Panel extends SceneNode {
 
   getContentSize(): { width: number; height: number } {
     const pad = this.compact ? 4 : 8;
-    const bottomPad = this.compact ? 8 : 16;
+    const bottomPad = this.compact ? 4 : 8;
     return {
       width: this.size.x - pad * 2,
       height: this.size.y - this.headerHeight - pad - bottomPad,
@@ -227,7 +227,7 @@ export class Panel extends SceneNode {
     if (managed.length === 0) return;
 
     const pad = this.compact ? 4 : 8;
-    const bottomPad = this.compact ? 8 : 16;
+    const bottomPad = this.compact ? 4 : 8;
     const nodePad = this.padding; // SceneNode-level padding from insets()
 
     if (this.childLayout === "vertical") {
