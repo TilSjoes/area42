@@ -759,6 +759,14 @@ if (panel.minimized) {        if (panel.contains(point)) return panel;        co
     const key = e.key;
 
     // Command palette takes priority
+    // Load global command items before handling key
+    if ((e.ctrlKey || e.metaKey) && key.toLowerCase() === "k") {
+      const globalItems = (globalThis as any).__agentsmith_command_items;
+      if (globalItems && Array.isArray(globalItems)) {
+        this._commandPalette.clearItems();
+        this._commandPalette.register(globalItems);
+      }
+    }
     if (this._commandPalette.handleKey(key, e.ctrlKey, e.metaKey)) {
       e.preventDefault();
       return;
