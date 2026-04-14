@@ -405,6 +405,22 @@ if (panel.minimized) {        if (panel.contains(point)) return panel;        co
         if (this.contextMenu.handleClick(point)) return;
       }
 
+      // Check if clicking on analysis overlay close button
+      if (this.analysisResult) {
+        const panelW = 260;
+        const px = this.renderer.width - panelW - 16;
+        const py = 60;
+        // Click anywhere on the analysis panel to dismiss
+        if (point.x >= px && point.x <= px + panelW && point.y >= py && point.y <= py + 350) {
+          this.analysisResult = null;
+          // Also clear selection
+          for (const child of this.scene.root.children) {
+            if (child instanceof Graph) child.clearSelection();
+          }
+          return;
+        }
+      }
+
       // Tree dispatch: find the deepest hit node
       const hit = this.scene.findAt(point);
 
@@ -1026,8 +1042,23 @@ if (panel.minimized) {        if (panel.contains(point)) return panel;        co
     ctx.fillRect(px, py, panelW, 1.5);
     ctx.restore();
 
+    // Close button (top-right)
+    const closeX = px + panelW - 20;
+    const closeY = py + 8;
+    ctx.fillStyle = "rgba(107, 123, 141, 0.5)";
+    ctx.font = "bold 12px system-ui";
+    ctx.textBaseline = "middle";
+    ctx.fillText("\u00d7", closeX, closeY + 4);
+
+    // Title
+    ctx.fillStyle = "rgba(0, 212, 170, 0.8)";
+    ctx.font = "bold 9px system-ui";
+    ctx.letterSpacing = "1px";
+    ctx.fillText("SELECTION ANALYSIS", px + 10, py + 14);
+    ctx.letterSpacing = "0px";
+
     // Content
-    renderAnalysis(ctx, this.analysisResult, px + 10, py + 10, panelW - 20, panelH - 20);
+    renderAnalysis(ctx, this.analysisResult, px + 10, py + 24, panelW - 20, panelH - 34);
 
     ctx.restore();
   }
