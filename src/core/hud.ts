@@ -86,6 +86,9 @@ export class HUD {
   // Selection analysis
   private analysisResult: AnalysisResult | null = null;
   private analysisPanel: Panel | null = null;
+  private analysisPanelPos = { x: -1, y: 60 }; // -1 means "right-aligned"
+  private analysisDragging = false;
+  private analysisDragOffset = { x: 0, y: 0 };
 
   // Panel dragging lock state
   private panelsLocked: boolean = true;
@@ -405,18 +408,30 @@ if (panel.minimized) {        if (panel.contains(point)) return panel;        co
         if (this.contextMenu.handleClick(point)) return;
       }
 
-      // Check if clicking on analysis overlay close button
+      // Check if clicking on analysis overlay
       if (this.analysisResult) {
         const panelW = 260;
-        const px = this.renderer.width - panelW - 16;
-        const py = 60;
-        // Click anywhere on the analysis panel to dismiss
-        if (point.x >= px && point.x <= px + panelW && point.y >= py && point.y <= py + 350) {
-          this.analysisResult = null;
-          // Also clear selection
-          for (const child of this.scene.root.children) {
-            if (child instanceof Graph) child.clearSelection();
+        const panelH = Math.min(350, this.renderer.height - 100);
+        const px = this.analysisPanelPos.x < 0 ? this.renderer.width - panelW - 16 : this.analysisPanelPos.x;
+        const py = this.analysisPanelPos.y;
+        if (point.x >= px && point.x <= px + panelW && point.y >= py && point.y <= py + panelH) {
+          // Close button (top-right 20x20 area)
+          if (point.x >= px + panelW - 24 && point.y <= py + 22) {
+            this.analysisResult = null;
+            this.analysisPanelPos = { x: -1, y: 60 };
+            for (const child of this.scene.root.children) {
+              if (child instanceof Graph) child.clearSelection();
+            }
+            return;
           }
+          // Header area — start drag
+          if (point.y <= py + 28) {
+            this.analysisDragging = true;
+            if (this.analysisPanelPos.x < 0) this.analysisPanelPos.x = px;
+            this.analysisDragOffset = { x: point.x - px, y: point.y - py };
+            return;
+          }
+          // Click inside panel body — consume but don't dismiss
           return;
         }
       }
@@ -474,6 +489,13 @@ if (panel.minimized) {        if (panel.contains(point)) return panel;        co
 
       if (this.contextMenu.isVisible()) {
         this.contextMenu.handleMove(point);
+      }
+
+      // Analysis panel drag
+      if (this.analysisDragging) {
+        this.analysisPanelPos.x = point.x - this.analysisDragOffset.x;
+        this.analysisPanelPos.y = point.y - this.analysisDragOffset.y;
+        return;
       }
 
       // Active interaction in progress — route to active node
@@ -1005,8 +1027,8 @@ if (panel.minimized) {        if (panel.contains(point)) return panel;        co
 
     const panelW = 260;
     const panelH = Math.min(350, h - 100);
-    const px = w - panelW - 16;
-    const py = 60;
+    const px = this.analysisPanelPos.x < 0 ? w - panelW - 16 : this.analysisPanelPos.x;
+    const py = this.analysisPanelPos.y;
     const r = 8;
 
     ctx.save();
