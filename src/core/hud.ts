@@ -716,16 +716,32 @@ if (panel.minimized) {        if (panel.contains(point)) return panel;        co
   }
 
   private buildPanelContextMenu(panel: Panel): MenuItem[] {
+    // Check if panel contains a Graph — add graph-specific actions
+    const graphsInPanel: Graph[] = [];
+    const walkForGraphs = (node: SceneNode) => {
+      if (node instanceof Graph) graphsInPanel.push(node);
+      for (const child of node.children) walkForGraphs(child);
+    };
+    walkForGraphs(panel);
+
+    const graphItems: MenuItem[] = graphsInPanel.length > 0 ? [
+      { label: Save Positions, icon: U0001f4be, action: () => { for (const g of graphsInPanel) g.savePositions(); } },
+      { label: Reset Layout, icon: u21bb, action: () => { for (const g of graphsInPanel) g.resetPositions(); } },
+      { label: Fit to View, icon: u25a3, action: () => { for (const g of graphsInPanel) g.fitToView(); } },
+      { label: , separator: true, action: () => {} },
+    ] : [];
+
     return [
-      { label: panel.collapsed ? "Expand" : "Collapse", icon: panel.collapsed ? "▼" : "▲", action: () => { panel.collapsed = !panel.collapsed; } },
-{ label: panel.minimized ? "Restore" : "Minimize", icon: panel.minimized ? "□" : "—", action: () => { if (panel.minimized) this.restoreFromDock(panel); else this.minimizePanel(panel); } },
-      { label: "Close", icon: "×", shortcut: "Del", action: () => { if (typeof (panel as any).onCloseCallback === "function") { (panel as any).onCloseCallback(); } else { panel.visible = false; } } },
-      { label: "", separator: true, action: () => {} },
-      { label: "Reset Position", icon: "↺", action: () => { panel.position.x = 50; panel.position.y = 50; } },
+      ...graphItems,
+      { label: panel.collapsed ? Expand : Collapse, icon: panel.collapsed ? u25bc : u25b2, action: () => { panel.collapsed = !panel.collapsed; } },
+      { label: panel.minimized ? Restore : Minimize, icon: panel.minimized ? u25a1 : u2014, action: () => { if (panel.minimized) this.restoreFromDock(panel); else this.minimizePanel(panel); } },
+      { label: Close, icon: u00d7, shortcut: Del, action: () => { if (typeof (panel as any).onCloseCallback === function) { (panel as any).onCloseCallback(); } else { panel.visible = false; } } },
+      { label: , separator: true, action: () => {} },
+      { label: Reset Position, icon: u21ba, action: () => { panel.position.x = 50; panel.position.y = 50; } },
     ];
   }
 
-  private buildEmptyContextMenu(): MenuItem[] {
+    private buildEmptyContextMenu(): MenuItem[] {
     return [
       { label: "Reset Layout", icon: "↻", shortcut: "R", action: () => { for (const child of this.scene.root.children) { if (child instanceof Graph) { child.resetPositions(); } } } },
       { label: "Clear Selection", icon: "✖", shortcut: "Esc", action: () => { for (const child of this.scene.root.children) { if (child instanceof Graph) { child.clearSelection(); } } } },
