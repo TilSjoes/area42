@@ -156,6 +156,9 @@ export class Graph extends SceneNode {
   hoveredEdge: GraphEdge | null = null;
 /** Tooltip state for node hover */  private tooltip: { x: number; y: number; text: string; subtext: string; visible: boolean; color: string } = { x: 0, y: 0, text: "", subtext: "", visible: false, color: "#ffffff" };
 
+  /** Whether to render the built-in node tooltip on hover (disable if you have a custom tooltip) */
+  public tooltipEnabled: boolean = true;
+
   // Pan and zoom state
   offsetX = 0;
   offsetY = 0;
@@ -593,7 +596,7 @@ export class Graph extends SceneNode {
     this.particleSys.render(ctx);
 
     // --- Render tooltip ---
-    if (this.tooltip.visible) {
+    if (this.tooltipEnabled && this.tooltip.visible) {
       ctx.save();
       ctx.font = "bold 10px system-ui, sans-serif";
       const textW = ctx.measureText(this.tooltip.text).width;
