@@ -361,6 +361,13 @@ if (panel.minimized) {        if (panel.contains(point)) return panel;        co
   private setupInteractions() {
     const canvas = this.renderer["canvas"] as HTMLCanvasElement;
 
+    // Window-level mouseup to always release analysis panel drag even if mouse is outside canvas
+    window.addEventListener("mouseup", () => {
+      if (this.analysisDragging) {
+        this.analysisDragging = false;
+      }
+    });
+
     // v2.2: Single active node for drag tracking
     let activeNode: SceneNode | null = null;
     let hoveredNode: SceneNode | null = null;

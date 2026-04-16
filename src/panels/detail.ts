@@ -153,7 +153,7 @@ export class DetailPanel extends Panel {
       ctx.fillStyle = d.color || "#4dabf7";
       ctx.font = "bold 9px system-ui";
       ctx.letterSpacing = "1px";
-      ctx.fillText(section.title.toUpperCase(), x, y);
+      ctx.fillText((section.title || "").toUpperCase(), x, y);
       ctx.letterSpacing = "0px";
       y += 4;
 
