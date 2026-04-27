@@ -197,6 +197,113 @@ function injectCSS() {
     }
     .a42-input::placeholder { color: rgba(107,123,141,0.5); }
 
+    /* ─── Safety Button (flip-lid fire control) ─── */
+    .a42-safety-wrap {
+      position: absolute;
+      width: 180px;
+      height: 60px;
+      perspective: 400px;
+      cursor: pointer;
+      user-select: none;
+    }
+    .a42-safety-base {
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(180deg, #2a0000 0%, #1a0000 100%);
+      border: 1px solid rgba(255,50,50,0.35);
+      border-radius: 6px;
+      box-shadow: inset 0 0 16px rgba(255,0,0,0.25),
+                  0 0 12px rgba(255,0,0,0.12);
+      display: flex; align-items: center; justify-content: center;
+      overflow: hidden;
+    }
+    .a42-safety-base::before {
+      content: "";
+      position: absolute; inset: 0;
+      background:
+        radial-gradient(circle at 50% 50%, rgba(255,40,40,0.20) 0%, transparent 70%);
+      pointer-events: none;
+    }
+    .a42-safety-fire {
+      color: #ff3030;
+      font-weight: 900;
+      font-size: 13px;
+      letter-spacing: 0.2em;
+      text-shadow: 0 0 10px rgba(255,40,40,0.9),
+                   0 0 20px rgba(255,40,40,0.5);
+      font-family: 'SF Mono', 'Cascadia Code', Consolas, monospace;
+    }
+    .a42-safety-wrap.armed .a42-safety-fire {
+      animation: a42-safety-pulse 0.9s ease-in-out infinite alternate;
+    }
+    @keyframes a42-safety-pulse {
+      from { text-shadow: 0 0 8px rgba(255,40,40,0.6), 0 0 14px rgba(255,40,40,0.3); transform: scale(1); }
+      to   { text-shadow: 0 0 18px rgba(255,80,80,1),  0 0 32px rgba(255,40,40,0.8); transform: scale(1.05); }
+    }
+    .a42-safety-activating .a42-safety-base {
+      animation: a42-safety-flash 0.15s 3;
+    }
+    @keyframes a42-safety-flash {
+      0%, 100% { box-shadow: inset 0 0 16px rgba(255,0,0,0.25), 0 0 12px rgba(255,0,0,0.12); }
+      50% { box-shadow: inset 0 0 36px rgba(255,200,100,1), 0 0 30px rgba(255,120,50,0.8); }
+    }
+    .a42-safety-lid {
+      position: absolute;
+      inset: 0;
+      background:
+        repeating-linear-gradient(
+          45deg,
+          #1a1a1a 0, #1a1a1a 10px,
+          #ffd43b 10px, #ffd43b 20px,
+          #1a1a1a 20px, #1a1a1a 30px
+        );
+      border: 1px solid #444;
+      border-radius: 6px;
+      box-shadow:
+        inset 0 2px 0 rgba(255,255,255,0.08),
+        inset 0 -3px 6px rgba(0,0,0,0.5),
+        0 2px 4px rgba(0,0,0,0.5);
+      display: flex; align-items: center; justify-content: center;
+      transform-origin: top center;
+      transform: rotateX(0deg);
+      transition: transform 0.35s cubic-bezier(0.2, 0.9, 0.35, 1.3);
+      backface-visibility: hidden;
+    }
+    .a42-safety-lid-label {
+      background: rgba(20,20,20,0.85);
+      color: #ffd43b;
+      padding: 3px 10px;
+      border-radius: 3px;
+      font-size: 10px;
+      font-weight: 900;
+      letter-spacing: 0.2em;
+      text-transform: uppercase;
+      font-family: 'SF Mono', 'Cascadia Code', Consolas, monospace;
+      border: 1px solid rgba(255,212,59,0.5);
+    }
+    .a42-safety-wrap.armed .a42-safety-lid {
+      transform: rotateX(-110deg);
+    }
+    .a42-safety-wrap.busy {
+      pointer-events: none;
+      opacity: 0.7;
+    }
+    .a42-safety-wrap.busy .a42-safety-fire::after {
+      content: " …";
+    }
+    .a42-safety-sublabel {
+      position: absolute;
+      bottom: -13px;
+      left: 0;
+      right: 0;
+      text-align: center;
+      font-size: 8px;
+      color: #6b7b8d;
+      letter-spacing: 0.15em;
+      text-transform: uppercase;
+      pointer-events: none;
+    }
+
     /* ─── Lock Icon Button ─── */
     .a42-lock-btn {
       padding: 4px 8px;
@@ -256,6 +363,21 @@ export interface ToggleControl extends ControlBase {
   setValue: (on: boolean) => void;
 }
 
+export interface SafetyButtonControl {
+  type: "safetyButton";
+  element: HTMLDivElement;
+  panel: any;
+  offset: { x: number; y: number };
+  armed: boolean;
+  activating: boolean;
+  onActivate: (() => void | Promise<void>) | null;
+  arm: () => void;
+  disarm: () => void;
+  activate: () => Promise<void>;
+  setBusy: (busy: boolean) => void;
+  destroy: () => void;
+}
+
 export interface InputControl extends ControlBase {
   type: "input";
   value: string;
@@ -264,7 +386,7 @@ export interface InputControl extends ControlBase {
   clear: () => void;
 }
 
-export type PanelControl = ButtonControl | RadioGroupControl | SliderControl | ToggleControl | InputControl;
+export type PanelControl = ButtonControl | RadioGroupControl | SliderControl | ToggleControl | InputControl | SafetyButtonControl;
 
 
 // ───────── Control Manager ─────────────────────────────────────────
@@ -523,6 +645,128 @@ export class ControlManager {
     };
 
     wrap.addEventListener("click", () => control.setValue(!control.value));
+    this.controls.push(control);
+    div.appendChild(wrap);
+    return control;
+  }
+
+  // ─── Safety Button (flip-lid fire control) ───
+
+  /**
+   * A 2-click safety button: first click flips the warning lid, exposing a red
+   * "fire" button. Second click activates. Auto-re-seals after `armTimeoutMs`
+   * if not activated. Intended for irreversible / expensive operations:
+   * model reload, service restart, emergency stop, etc.
+   *
+   * @example
+   *   cm.safetyButton(panel, {
+   *     x: 0, y: 90,
+   *     label: "RELOAD",
+   *     sublabel: "Actual mode change",
+   *     armTimeoutMs: 3000,
+   *     onActivate: async () => { await restartModel(); },
+   *   });
+   */
+  safetyButton(panel: any, opts: {
+    x: number; y: number;
+    width?: number;
+    height?: number;
+    label?: string;          // main label shown on the lid and on the red button
+    sublabel?: string;       // small text below the button
+    armTimeoutMs?: number;   // re-seal lid after this ms without activation (default 3000)
+    onActivate?: () => void | Promise<void>;
+  }): SafetyButtonControl {
+    const div = this.getOrCreatePanelContainer(panel);
+    const wrap = document.createElement("div");
+    wrap.className = "a42-control a42-safety-wrap";
+    wrap.style.left = opts.x + "px";
+    wrap.style.top = opts.y + "px";
+    if (opts.width)  wrap.style.width  = opts.width + "px";
+    if (opts.height) wrap.style.height = opts.height + "px";
+
+    // Red base layer (the "fire" button)
+    const base = document.createElement("div");
+    base.className = "a42-safety-base";
+    const fire = document.createElement("div");
+    fire.className = "a42-safety-fire";
+    fire.textContent = opts.label ?? "FIRE";
+    base.appendChild(fire);
+    wrap.appendChild(base);
+
+    // Yellow/black lid on top
+    const lid = document.createElement("div");
+    lid.className = "a42-safety-lid";
+    const lidLabel = document.createElement("div");
+    lidLabel.className = "a42-safety-lid-label";
+    lidLabel.textContent = opts.label ?? "FIRE";
+    lid.appendChild(lidLabel);
+    wrap.appendChild(lid);
+
+    // Optional sublabel below
+    if (opts.sublabel) {
+      const sub = document.createElement("div");
+      sub.className = "a42-safety-sublabel";
+      sub.textContent = opts.sublabel;
+      wrap.appendChild(sub);
+    }
+
+    const armTimeout = opts.armTimeoutMs ?? 3000;
+    let armTimer: any = null;
+
+    const control: SafetyButtonControl = {
+      type: "safetyButton",
+      element: wrap,
+      panel,
+      offset: { x: opts.x, y: opts.y },
+      armed: false,
+      activating: false,
+      onActivate: opts.onActivate ?? null,
+      arm: () => {
+        if (control.armed || control.activating) return;
+        control.armed = true;
+        wrap.classList.add("armed");
+        if (armTimer) clearTimeout(armTimer);
+        armTimer = setTimeout(() => control.disarm(), armTimeout);
+      },
+      disarm: () => {
+        control.armed = false;
+        wrap.classList.remove("armed");
+        if (armTimer) { clearTimeout(armTimer); armTimer = null; }
+      },
+      activate: async () => {
+        if (!control.armed || control.activating) return;
+        control.activating = true;
+        wrap.classList.add("a42-safety-activating");
+        try {
+          if (control.onActivate) await control.onActivate();
+        } finally {
+          control.activating = false;
+          wrap.classList.remove("a42-safety-activating");
+          control.disarm();
+        }
+      },
+      setBusy: (busy: boolean) => {
+        wrap.classList.toggle("busy", busy);
+      },
+      destroy: () => {
+        if (armTimer) clearTimeout(armTimer);
+        wrap.remove();
+        this.removeControl(control);
+      },
+    };
+
+    wrap.addEventListener("click", (e) => {
+      e.stopPropagation();
+      if (control.activating) return;
+      if (!control.armed) {
+        control.arm();
+      } else {
+        // Clicks on the (now-tilted) lid also count as activate — the user
+        // intended to press something in this area twice.
+        control.activate();
+      }
+    });
+
     this.controls.push(control);
     div.appendChild(wrap);
     return control;
