@@ -1,6 +1,8 @@
 # Area42
 
 > Futuristic HUD visualization engine for real-time system monitoring
+> 
+> Part of the [Arthur system](https://github.com/TilSjoes/Arthur) — used by the AgentSmith dashboard and Area42OS.
 
 **@dontpanic/area42** — Canvas-based heads-up display with floating glass panels, animated graphs, and real-time data streams. Built for agent orchestration dashboards, SOC monitoring, and anyone who wants their data to look like an Iron Man interface.
 
