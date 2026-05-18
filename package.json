@@ -1,6 +1,6 @@
 {
   "name": "@dontpanic/area42",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Futuristic HUD visualization engine for real-time system monitoring",
   "type": "module",
   "main": "dist/area42.js",
@@ -13,12 +13,21 @@
       "types": "./dist/index.d.ts"
     }
   },
+  "files": [
+    "dist",
+    "README.md",
+    "ARCHITECTURE.md",
+    "AREA42OS.md",
+    "AREA42_V2_RFC.md",
+    "LICENSE"
+  ],
   "scripts": {
     "dev": "vite",
-    "build": "tsc && vite build",
+    "build": "vite build && tsc",
     "preview": "vite preview",
     "lint": "eslint src/",
-    "test": "vitest"
+    "test": "vitest",
+    "prepare": "npm run build || true"
   },
   "keywords": [
     "hud",
