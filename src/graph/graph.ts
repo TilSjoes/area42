@@ -41,6 +41,19 @@ export interface GraphEdgeOptions {
   width?: number;
   particles?: boolean;
   dashed?: boolean;
+  /**
+   * If true, render an arrowhead at the `to` end of the edge.
+   * Use for causal relations like "A enables B" or "A gates B" — where
+   * direction is semantically meaningful and shouldn't be inferred or
+   * flipped by hover/cascade logic.
+   * Defaults to false (undirected line, matches previous behaviour).
+   */
+  directional?: boolean;
+  /**
+   * Optional override for the arrowhead size in pixels (length along
+   * the edge). Defaults to ~9px scaled by edge.width.
+   */
+  arrowSize?: number;
   data?: Record<string, any>;
   detail?: EdgeDetail;
 }
@@ -108,6 +121,8 @@ export class GraphEdge {
   width: number;
   particles: boolean;
   dashed: boolean;
+  directional: boolean;
+  arrowSize: number;
   data: Record<string, any>;
   detail: EdgeDetail | undefined;
   /** Whether this edge is selected (highlighted) */
@@ -123,6 +138,8 @@ export class GraphEdge {
     this.width = options.width ?? 1;
     this.particles = options.particles ?? false;
     this.dashed = options.dashed ?? false;
+    this.directional = options.directional ?? false;
+    this.arrowSize = options.arrowSize ?? Math.max(8, this.width * 4);
     this.data = options.data ?? {};
     this.detail = options.detail;
   }
@@ -470,6 +487,38 @@ export class Graph extends SceneNode {
       ctx.stroke();
 
       ctx.setLineDash([]);
+
+      // Directional arrowhead — drawn at the `to` endpoint, tangent to
+      // the curve. The curve's tangent at the end of a quadratic Bézier
+      // P0 → CP → P1 is (P1 − CP), so we use that direction.
+      if (edge.directional) {
+        const tx = toNode.x - cx;
+        const ty = toNode.y - cy;
+        const len = Math.sqrt(tx * tx + ty * ty) || 1;
+        const ux = tx / len;
+        const uy = ty / len;
+        // Step the tip back by the target node's radius so the arrow
+        // sits AT the node boundary, not buried inside it.
+        const tipX = ox + toNode.x - ux * toNode.radius;
+        const tipY = oy + toNode.y - uy * toNode.radius;
+        const baseX = tipX - ux * edge.arrowSize;
+        const baseY = tipY - uy * edge.arrowSize;
+        // Perpendicular for the wings
+        const px = -uy;
+        const py = ux;
+        const wing = edge.arrowSize * 0.45;
+
+        ctx.shadowBlur = 0;
+        ctx.globalAlpha = 0.85;
+        ctx.fillStyle = edge.color;
+        ctx.beginPath();
+        ctx.moveTo(tipX, tipY);
+        ctx.lineTo(baseX + px * wing, baseY + py * wing);
+        ctx.lineTo(baseX - px * wing, baseY - py * wing);
+        ctx.closePath();
+        ctx.fill();
+      }
+
       ctx.restore();
 
       // Edge label
