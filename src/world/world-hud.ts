@@ -14,6 +14,9 @@
 
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
+import { EffectComposer } from "three/examples/jsm/postprocessing/EffectComposer.js";
+import { RenderPass }     from "three/examples/jsm/postprocessing/RenderPass.js";
+import { UnrealBloomPass } from "three/examples/jsm/postprocessing/UnrealBloomPass.js";
 
 /** Theme — keep it minimal until we know what we need. */
 export interface WorldTheme {
@@ -30,6 +33,27 @@ export const NeonWorldTheme: WorldTheme = {
   directional: 0.75,
 };
 
+/** Bloom (postprocess) settings — tuned for the Area42 neon aesthetic. */
+export interface BloomOptions {
+  /**
+   * Enable the postprocess pass. When false WorldHUD renders directly
+   * to the canvas (faster, no glow). Default true — the glow is the
+   * thing that gives Area42 its character on WebGL.
+   */
+  enabled?: boolean;
+  /** Bloom intensity multiplier. Default 0.85. */
+  strength?: number;
+  /** Blur radius. Default 0.6 — Three.js docs recommend < 1.0. */
+  radius?: number;
+  /**
+   * Luminance threshold below which pixels don't bloom. 0 blooms
+   * everything (washes out); 1 blooms only fully-bright pixels (very
+   * crisp). 0.2 lets emissive node colors shine without the
+   * background fogging. Default 0.2.
+   */
+  threshold?: number;
+}
+
 export interface WorldHUDOptions {
   theme?: WorldTheme;
   /** Field of view for the perspective camera, in degrees. Default 60. */
@@ -38,6 +62,8 @@ export interface WorldHUDOptions {
   cameraStart?: [number, number, number];
   /** Initial OrbitControls target. Default origin. */
   cameraTarget?: [number, number, number];
+  /** Bloom postprocess options. Default: enabled with sane numbers. */
+  bloom?: BloomOptions;
 }
 
 export class WorldHUD {
@@ -47,6 +73,9 @@ export class WorldHUD {
   readonly renderer: THREE.WebGLRenderer;
   readonly controls: OrbitControls;
   readonly theme: WorldTheme;
+  /** EffectComposer — null when bloom is disabled. */
+  readonly composer: EffectComposer | null;
+  readonly bloomPass: UnrealBloomPass | null;
 
   private animationId: number | null = null;
   private resizeObserver: ResizeObserver | null = null;
@@ -78,9 +107,13 @@ export class WorldHUD {
 
     // Renderer. WebGL2-preferred (Three.js auto-falls-back). antialias on
     // for pretty edges; pixel ratio capped at 2 to keep retina sane.
+    // ACES tonemapping + a slightly hot exposure gives bloom an HDR-ish
+    // "glow exceeds 1.0" feel on materials with emissiveIntensity > 1.
     this.renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
     this.renderer.setSize(rect.width || 1, rect.height || 1, false);
+    this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    this.renderer.toneMappingExposure = 1.0;
     this.renderer.domElement.style.display = "block";
     this.renderer.domElement.style.width = "100%";
     this.renderer.domElement.style.height = "100%";
@@ -88,22 +121,42 @@ export class WorldHUD {
 
     // Lighting. One ambient + one directional is enough for the basic
     // depth shading we need. SELDON nodes glow on top via emissive
-    // material, not light — that comes later if we want it.
+    // material + bloom postprocess — that's where the neon character
+    // comes from.
     this.scene.add(new THREE.AmbientLight(0xffffff, this.theme.ambient));
     const dir = new THREE.DirectionalLight(0xffffff, this.theme.directional);
     dir.position.set(400, 800, 600);
     this.scene.add(dir);
 
     // Controls. OrbitControls: drag = orbit, right-drag/two-finger = pan,
-    // scroll = zoom. Damping on for the "feels alive" inertia. WASD-fly
-    // mode comes in a follow-up — needs PointerLockControls + keyboard
-    // wiring. For MVP, OrbitControls alone gives us inspection.
+    // scroll = zoom. Damping on for the "feels alive" inertia.
     this.controls = new OrbitControls(this.camera, this.renderer.domElement);
     this.controls.enableDamping = true;
     this.controls.dampingFactor = 0.08;
     const ct = options.cameraTarget ?? [0, 0, 0];
     this.controls.target.set(ct[0], ct[1], ct[2]);
     this.controls.update();
+
+    // Bloom postprocess. Without this, emissive materials look flat;
+    // with it, bright nodes glow into the surrounding pixels and the
+    // scene gets the Area42 neon feel. EffectComposer adds a frame of
+    // GPU work — 151 entities don't notice; budget watchpoint at 10k.
+    const bloomCfg = options.bloom ?? {};
+    if (bloomCfg.enabled !== false) {
+      this.composer = new EffectComposer(this.renderer);
+      this.composer.setSize(rect.width || 1, rect.height || 1);
+      this.composer.addPass(new RenderPass(this.scene, this.camera));
+      this.bloomPass = new UnrealBloomPass(
+        new THREE.Vector2(rect.width || 1, rect.height || 1),
+        bloomCfg.strength ?? 0.85,
+        bloomCfg.radius ?? 0.6,
+        bloomCfg.threshold ?? 0.2,
+      );
+      this.composer.addPass(this.bloomPass);
+    } else {
+      this.composer = null;
+      this.bloomPass = null;
+    }
 
     // Auto-resize. ResizeObserver fires whenever the container's box
     // changes — sidebars opening, viewport resizing, etc. Cheaper than
@@ -112,7 +165,7 @@ export class WorldHUD {
     this.resizeObserver.observe(el);
   }
 
-  /** Resize the renderer to fit the container. Idempotent. */
+  /** Resize the renderer + composer to fit the container. Idempotent. */
   resize(): void {
     const rect = this.container.getBoundingClientRect();
     const w = rect.width || 1;
@@ -120,6 +173,8 @@ export class WorldHUD {
     this.camera.aspect = w / h;
     this.camera.updateProjectionMatrix();
     this.renderer.setSize(w, h, false);
+    if (this.composer) this.composer.setSize(w, h);
+    if (this.bloomPass) this.bloomPass.setSize(w, h);
   }
 
   /** Register a per-frame callback (data updates, animations, etc). */
@@ -135,7 +190,14 @@ export class WorldHUD {
       this.lastTime = t;
       this.controls.update();
       for (const cb of this.renderCallbacks) cb(dt);
-      this.renderer.render(this.scene, this.camera);
+      // composer.render() swaps in for renderer.render() when bloom
+      // is enabled. Both use the same scene + camera, so the toggle
+      // is transparent to consumers.
+      if (this.composer) {
+        this.composer.render();
+      } else {
+        this.renderer.render(this.scene, this.camera);
+      }
       this.animationId = requestAnimationFrame(tick);
     };
     this.animationId = requestAnimationFrame(tick);
@@ -171,6 +233,7 @@ export class WorldHUD {
     this.stop();
     this.resizeObserver?.disconnect();
     this.controls.dispose();
+    this.composer?.dispose();
     this.renderer.dispose();
     this.renderer.domElement.remove();
   }

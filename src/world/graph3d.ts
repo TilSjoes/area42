@@ -263,12 +263,16 @@ export class Graph3D {
   private getNodeMaterial(color: number): THREE.MeshStandardMaterial {
     let m = this.nodeMaterialCache.get(color);
     if (!m) {
+      // emissiveIntensity is pushed past 1.0 so the bloom postprocess
+      // (UnrealBloomPass with threshold ~0.2) catches the node bodies
+      // and glows them. Without bloom this looks slightly washed; the
+      // pair was tuned together.
       m = new THREE.MeshStandardMaterial({
         color,
         emissive: color,
-        emissiveIntensity: 0.35,
-        roughness: 0.4,
-        metalness: 0.1,
+        emissiveIntensity: 1.4,
+        roughness: 0.45,
+        metalness: 0.05,
       });
       this.nodeMaterialCache.set(color, m);
     }
