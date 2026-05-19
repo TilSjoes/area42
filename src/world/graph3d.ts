@@ -15,11 +15,13 @@
  *   (kicks in around 1k entities; not yet needed for SELDON's 151).
  * - Each edge = a thin Line, optionally with a cone arrowhead at the
  *   `to` end for directional types.
- * - Labels and tooltips defer — Three.js text needs sprite/SDF/HTML
- *   strategy choice. Hover-picking is in.
+ * - Per-node label sprite, hidden by default; surfaced on hover or
+ *   selection. Always-on labels at 1k+ nodes is unreadable; the
+ *   hover-only pattern keeps the scene quiet until the user asks.
  */
 
 import * as THREE from "three";
+import { makeTextSprite } from "./labels.js";
 
 export interface Node3DOptions {
   id: string;
@@ -46,6 +48,10 @@ interface Node3D {
   id: string;
   options: Node3DOptions;
   mesh: THREE.Mesh;
+  /** Hover/selection label sprite, hidden by default. */
+  labelSprite: THREE.Sprite | null;
+  /** Base radius — used to restore size when un-highlighted. */
+  baseScale: number;
 }
 
 interface Edge3D {
@@ -66,6 +72,15 @@ export class Graph3D {
 
   /** Reusable raycaster for picking. */
   private raycaster = new THREE.Raycaster();
+  private hoveredId: string | null = null;
+  private selectedId: string | null = null;
+
+  /**
+   * Fired when the hovered node changes. `id` is the new hover target,
+   * or null when leaving all nodes. Useful for upstream tooltip UI
+   * outside the scene.
+   */
+  onHoverChange?: (id: string | null) => void;
 
   constructor() {
     this.group = new THREE.Group();
@@ -84,7 +99,32 @@ export class Graph3D {
     mesh.userData.nodeId = options.id;
     mesh.userData.payload = options.data;
     this.group.add(mesh);
-    this.nodes.set(options.id, { id: options.id, options, mesh });
+
+    // Label sprite: created up front, attached to the mesh so it
+    // inherits the node's position. Hidden by default; setHovered /
+    // setSelected toggle visibility. Sprite anchor is below-center so
+    // the text sits above the sphere in screen space regardless of
+    // camera angle.
+    let labelSprite: THREE.Sprite | null = null;
+    if (options.label) {
+      labelSprite = makeTextSprite(options.label, {
+        scale: 18,
+        color: "#e0e8f0",
+        background: "rgba(8, 12, 20, 0.78)",
+      });
+      labelSprite.center.set(0.5, -0.4);
+      labelSprite.position.set(0, radius + 2, 0);
+      labelSprite.visible = false;
+      mesh.add(labelSprite);
+    }
+
+    this.nodes.set(options.id, {
+      id: options.id,
+      options,
+      mesh,
+      labelSprite,
+      baseScale: 1,
+    });
   }
 
   addEdge(options: Edge3DOptions): void {
@@ -133,15 +173,57 @@ export class Graph3D {
 
   /** Pick a node from a normalized device-space click. */
   pick(ndcX: number, ndcY: number, camera: THREE.Camera): Node3DOptions | null {
+    const node = this.pickNode(ndcX, ndcY, camera);
+    return node ? node.options : null;
+  }
+
+  /** Internal raycast that returns the Node3D record (with mesh access). */
+  private pickNode(ndcX: number, ndcY: number, camera: THREE.Camera): Node3D | null {
     this.raycaster.setFromCamera(new THREE.Vector2(ndcX, ndcY), camera);
-    const hits = this.raycaster.intersectObjects(
-      Array.from(this.nodes.values()).map((n) => n.mesh),
-      false,
-    );
+    const meshes: THREE.Object3D[] = [];
+    for (const n of this.nodes.values()) meshes.push(n.mesh);
+    const hits = this.raycaster.intersectObjects(meshes, false);
     if (hits.length === 0) return null;
     const id = hits[0].object.userData.nodeId as string | undefined;
     if (!id) return null;
-    return this.nodes.get(id)?.options ?? null;
+    return this.nodes.get(id) ?? null;
+  }
+
+  /**
+   * Update hover state from a normalized device-space pointer. Call
+   * from a pointermove handler. Fires `onHoverChange` if the hovered
+   * node identity changes; toggles the label sprite + size highlight.
+   */
+  updateHover(ndcX: number, ndcY: number, camera: THREE.Camera): void {
+    const node = this.pickNode(ndcX, ndcY, camera);
+    const newId = node ? node.id : null;
+    if (newId === this.hoveredId) return;
+    // Restore previous
+    if (this.hoveredId) this.applyHighlight(this.hoveredId);
+    this.hoveredId = newId;
+    // Apply new
+    if (newId) this.applyHighlight(newId);
+    if (this.onHoverChange) this.onHoverChange(newId);
+  }
+
+  /** Set the persistent selection. Pass null to clear. */
+  setSelected(id: string | null): void {
+    if (id === this.selectedId) return;
+    const prev = this.selectedId;
+    this.selectedId = id;
+    if (prev) this.applyHighlight(prev);
+    if (id) this.applyHighlight(id);
+  }
+
+  /** Recompute scale + label visibility for a node based on hover/selection. */
+  private applyHighlight(id: string): void {
+    const n = this.nodes.get(id);
+    if (!n) return;
+    const isHover = this.hoveredId === id;
+    const isSelected = this.selectedId === id;
+    const scale = isSelected ? 1.45 : isHover ? 1.2 : 1.0;
+    n.mesh.scale.setScalar(scale * n.baseScale);
+    if (n.labelSprite) n.labelSprite.visible = isHover || isSelected;
   }
 
   /** Compute a bounding box around all node positions — useful for fitToBox. */
@@ -155,6 +237,11 @@ export class Graph3D {
 
   clear(): void {
     for (const n of this.nodes.values()) {
+      if (n.labelSprite) {
+        n.mesh.remove(n.labelSprite);
+        n.labelSprite.material.map?.dispose();
+        n.labelSprite.material.dispose();
+      }
       this.group.remove(n.mesh);
       n.mesh.geometry.dispose();
     }
@@ -168,6 +255,8 @@ export class Graph3D {
     }
     this.nodes.clear();
     this.edges = [];
+    this.hoveredId = null;
+    this.selectedId = null;
   }
 
   // ── Material caches keep one material per color, sharing GPU state ──
