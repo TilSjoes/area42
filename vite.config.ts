@@ -16,6 +16,9 @@ export default defineConfig({
         "three",
         "three/examples/jsm/controls/OrbitControls.js",
         "three/examples/jsm/controls/PointerLockControls.js",
+        "three/examples/jsm/postprocessing/EffectComposer.js",
+        "three/examples/jsm/postprocessing/RenderPass.js",
+        "three/examples/jsm/postprocessing/UnrealBloomPass.js",
       ],
       output: {
         globals: {
