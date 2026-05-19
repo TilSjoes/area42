@@ -12,7 +12,11 @@ export default defineConfig({
       // three.js (and its example modules) is always external. The 2D
       // bundle treats it as optional (Panel3D dyn-imports with graceful
       // fallback). The /world module imports it statically — peer dep.
-      external: ["three", "three/examples/jsm/controls/OrbitControls.js"],
+      external: [
+        "three",
+        "three/examples/jsm/controls/OrbitControls.js",
+        "three/examples/jsm/controls/PointerLockControls.js",
+      ],
       output: {
         globals: {
           three: "THREE",

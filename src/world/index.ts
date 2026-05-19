@@ -20,6 +20,8 @@ export { Graph3D } from "./graph3d.js";
 export type { Node3DOptions, Edge3DOptions } from "./graph3d.js";
 export { AxisFrame } from "./axis-frame.js";
 export type { AxisFrameOptions } from "./axis-frame.js";
+export { FlyControls } from "./fly-controls.js";
+export type { FlyControlsOptions } from "./fly-controls.js";
 export { makeTextSprite } from "./labels.js";
 export type { TextSpriteOptions } from "./labels.js";
 export { scaleLinear, parseTime, categoricalIndex } from "./layout.js";
