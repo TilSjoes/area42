@@ -148,9 +148,9 @@ export class WorldHUD {
       this.composer.addPass(new RenderPass(this.scene, this.camera));
       this.bloomPass = new UnrealBloomPass(
         new THREE.Vector2(rect.width || 1, rect.height || 1),
-        bloomCfg.strength ?? 0.7,
+        bloomCfg.strength ?? 0.45,
         bloomCfg.radius ?? 0.55,
-        bloomCfg.threshold ?? 0.45,
+        bloomCfg.threshold ?? 0.65,
       );
       this.composer.addPass(this.bloomPass);
     } else {
