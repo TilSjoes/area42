@@ -23,7 +23,7 @@
  */
 
 import * as THREE from "three";
-import { makeTextSprite, makeTextMesh } from "./labels.js";
+import { makeTextMesh } from "./labels.js";
 
 /**
  * One tick on an axis. `t` is parametric in [-1, +1] mapping to
@@ -163,28 +163,35 @@ export class AxisFrame {
       const a = new THREE.Vector3();
       const b = new THREE.Vector3();
       const labelPos = new THREE.Vector3();
+      let labelNormal: [number, number, number];
       if (axis === "x") {
         a.set(p, -tickLen, 0); b.set(p, tickLen, 0);
         labelPos.set(p, -tickLen * 2, 0);
+        labelNormal = [1, 0, 0];
       } else if (axis === "y") {
         a.set(-tickLen, p, 0); b.set(tickLen, p, 0);
         labelPos.set(-tickLen * 2.5, p, 0);
+        labelNormal = [0, 1, 0];
       } else {
         a.set(-tickLen, 0, p); b.set(tickLen, 0, p);
         labelPos.set(-tickLen * 2.5, 0, p);
+        labelNormal = [0, 0, 1];
       }
       const geom = new THREE.BufferGeometry().setFromPoints([a, b]);
       const mat = new THREE.LineBasicMaterial({ color, transparent: true, opacity: 0.7 });
       this.group.add(new THREE.Line(geom, mat));
 
-      // Tick label: short text, billboard-readable from any angle.
-      const sprite = makeTextSprite(t.label, {
-        scale: 14,
+      // Tick label: SDF text via troika so it stays sharp under any
+      // zoom level (including fly-close). World-locked — rotates with
+      // the AxisFrame group instead of billboarding. Short text reads
+      // fine from off-axis angles too.
+      const label = makeTextMesh(t.label, {
+        scale: 16,
         color: "#c8d6e5",
-        background: "rgba(8, 12, 20, 0.6)",
+        normal: labelNormal,
       });
-      sprite.position.copy(labelPos);
-      this.group.add(sprite);
+      label.position.copy(labelPos);
+      this.group.add(label);
     }
   }
 
