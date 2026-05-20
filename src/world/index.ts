@@ -22,6 +22,8 @@ export { AxisFrame } from "./axis-frame.js";
 export type { AxisFrameOptions, AxisTick } from "./axis-frame.js";
 export { FlyControls } from "./fly-controls.js";
 export type { FlyControlsOptions } from "./fly-controls.js";
+export { WorldPanel } from "./world-panel.js";
+export type { WorldPanelOptions } from "./world-panel.js";
 export { makeTextSprite, makeTextMesh } from "./labels.js";
 export type { TextSpriteOptions, TextMeshOptions } from "./labels.js";
 export { scaleLinear, parseTime, categoricalIndex } from "./layout.js";

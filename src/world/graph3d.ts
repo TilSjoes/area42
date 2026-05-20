@@ -341,6 +341,23 @@ export class Graph3D {
     return box;
   }
 
+  /**
+   * World-space position of a node by id, or null if unknown. Useful
+   * for upstream UI (panels, tooltips) that wants to anchor to a node
+   * without diving into the internal mesh map.
+   */
+  getNodePosition(id: string): THREE.Vector3 | null {
+    const n = this.nodes.get(id);
+    return n ? n.mesh.position.clone() : null;
+  }
+
+  /** Effective rendered radius of a node (size × baseScale). */
+  getNodeRadius(id: string): number {
+    const n = this.nodes.get(id);
+    if (!n) return 0;
+    return (n.options.size ?? 6) * n.baseScale;
+  }
+
   clear(): void {
     for (const id of Array.from(this.nodes.keys())) this.removeNode(id);
     this.clearEdges();
