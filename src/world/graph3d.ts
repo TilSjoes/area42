@@ -23,13 +23,31 @@
 import * as THREE from "three";
 import { makeTextSprite } from "./labels.js";
 
+/**
+ * Geometric shape per node. Mirrors the 2D Graph's shape language
+ * where the metaphor maps cleanly (sphere↔circle, box↔rect,
+ * octahedron↔diamond, cylinder-hex↔hexagon) and adds 3D-only
+ * primitives for richer kind-differentiation.
+ */
+export type Node3DShape =
+  | "sphere"        // default — generic / initiative
+  | "box"           // solid / capability
+  | "cone"          // directed / dependency
+  | "cylinder"      // pillar (hexagonal prism for regulation)
+  | "octahedron"    // diamond / risk
+  | "tetrahedron"   // sharp / novelty
+  | "icosahedron"   // multi-faceted / security or maturity
+  | "torus";        // cyclic / event
+
 export interface Node3DOptions {
   id: string;
   label?: string;
   position: [number, number, number];
   color?: number | string;
-  /** Sphere radius. Default 6. */
+  /** Sphere radius (or equivalent characteristic size). Default 6. */
   size?: number;
+  /** Geometry shape. Default "sphere". */
+  shape?: Node3DShape;
   /** Free-form payload — picked up by hit-test handlers. */
   data?: unknown;
 }
@@ -92,8 +110,8 @@ export class Graph3D {
     const radius = options.size ?? 6;
     const material = this.getNodeMaterial(color);
     // Geometry is per-node so we can vary radius. Cheap for <1k nodes;
-    // when we hit InstancedMesh we'll merge them.
-    const geom = new THREE.SphereGeometry(radius, 16, 12);
+    // when we hit InstancedMesh we'll merge per-shape buckets.
+    const geom = makeShapeGeometry(options.shape ?? "sphere", radius);
     const mesh = new THREE.Mesh(geom, material);
     mesh.position.set(options.position[0], options.position[1], options.position[2]);
     mesh.userData.nodeId = options.id;
@@ -372,4 +390,38 @@ export class Graph3D {
 function toColor(c: number | string): number {
   if (typeof c === "number") return c;
   return new THREE.Color(c).getHex();
+}
+
+/**
+ * Build a Three.js BufferGeometry for the requested shape, normalised
+ * so the visual weight at a given `size` is roughly comparable across
+ * shapes. Each primitive has its own characteristic radius; we scale
+ * the constructor inputs so an octahedron and a sphere at size=10 read
+ * as similar volumes.
+ *
+ * Caller owns disposal — geometries are per-node here (small N), so
+ * we don't share. InstancedMesh merge is the obvious next perf step.
+ */
+function makeShapeGeometry(shape: Node3DShape, size: number): THREE.BufferGeometry {
+  switch (shape) {
+    case "box":
+      return new THREE.BoxGeometry(size * 1.55, size * 1.55, size * 1.55);
+    case "cone":
+      return new THREE.ConeGeometry(size * 0.95, size * 1.85, 14);
+    case "cylinder":
+      // Hex prism — 6 radial segments so it reads as a hexagonal pillar
+      // (matches the 2D Graph's "hexagon" shape).
+      return new THREE.CylinderGeometry(size * 0.95, size * 0.95, size * 1.5, 6);
+    case "octahedron":
+      return new THREE.OctahedronGeometry(size * 1.2);
+    case "tetrahedron":
+      return new THREE.TetrahedronGeometry(size * 1.3);
+    case "icosahedron":
+      return new THREE.IcosahedronGeometry(size * 1.05);
+    case "torus":
+      return new THREE.TorusGeometry(size * 0.9, size * 0.32, 12, 24);
+    case "sphere":
+    default:
+      return new THREE.SphereGeometry(size, 16, 12);
+  }
 }
