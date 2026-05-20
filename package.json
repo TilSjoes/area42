@@ -18,10 +18,12 @@
     }
   },
   "peerDependencies": {
-    "three": "^0.183.0"
+    "three": "^0.183.0",
+    "troika-three-text": "^0.52.0"
   },
   "peerDependenciesMeta": {
-    "three": { "optional": true }
+    "three": { "optional": true },
+    "troika-three-text": { "optional": true }
   },
   "files": [
     "dist",
@@ -59,6 +61,7 @@
   "devDependencies": {
     "@types/three": "^0.183.1",
     "three": "^0.183.2",
+    "troika-three-text": "^0.52.0",
     "typescript": "^6.0.2",
     "vite": "^8.0.2"
   }
