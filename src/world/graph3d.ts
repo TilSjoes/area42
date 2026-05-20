@@ -369,14 +369,15 @@ export class Graph3D {
   private getNodeMaterial(color: number): THREE.MeshStandardMaterial {
     let m = this.nodeMaterialCache.get(color);
     if (!m) {
-      // Tuned alongside WorldHUD's bloom defaults — emissive ~1.0 with
-      // bloom threshold ~0.45 produces a clean glow on bright cores
-      // without washing out the rest of the scene.
+      // Tuned alongside WorldHUD's bloom defaults — emissive ~0.85
+      // with bloom threshold ~0.65 produces a subtle glow on bright
+      // cores, no wash on the surrounding scene. Iter 3 of the tuning
+      // (Frode found the prior 1.0 + 0.45 still too hot).
       m = new THREE.MeshStandardMaterial({
         color,
         emissive: color,
-        emissiveIntensity: 1.0,
-        roughness: 0.45,
+        emissiveIntensity: 0.85,
+        roughness: 0.5,
         metalness: 0.05,
       });
       this.nodeMaterialCache.set(color, m);
