@@ -226,6 +226,94 @@ export class Graph3D {
     if (n.labelSprite) n.labelSprite.visible = isHover || isSelected;
   }
 
+  /**
+   * Diff-update: take new node + edge specs and mutate the scene to
+   * match without tearing everything down. Existing nodes get position
+   * + color patched in place; missing nodes are removed; brand-new
+   * nodes are added. Edges are simpler to clear-and-readd (small,
+   * unkeyed) — node teardown is what causes visible flicker, not
+   * edges.
+   *
+   * Use this instead of `clear() + addNode/addEdge` whenever the data
+   * is *evolving* rather than wholesale-replaced — e.g. time scrubbing
+   * where most entities exist in both before/after frames.
+   *
+   * Limitation: node SIZE isn't updated (radius is baked into geometry).
+   * Time scrubbing rarely changes confidence dramatically; if it does,
+   * caller can `clear()` for a full rebuild.
+   */
+  update(spec: { nodes: Node3DOptions[]; edges: Edge3DOptions[] }): void {
+    const newIds = new Set<string>();
+    for (const n of spec.nodes) newIds.add(n.id);
+
+    // Drop nodes no longer present.
+    const toRemove: string[] = [];
+    for (const id of this.nodes.keys()) {
+      if (!newIds.has(id)) toRemove.push(id);
+    }
+    for (const id of toRemove) this.removeNode(id);
+
+    // Add or patch.
+    for (const opts of spec.nodes) {
+      const existing = this.nodes.get(opts.id);
+      if (existing) {
+        this.patchNode(existing, opts);
+      } else {
+        this.addNode(opts);
+      }
+    }
+
+    // Edges: clear and re-add. Lines are cheap; their teardown isn't
+    // what causes flicker. If profiling shows otherwise, swap to a
+    // diff keyed on `${from}::${to}::${type}`.
+    this.clearEdges();
+    for (const opts of spec.edges) this.addEdge(opts);
+
+    // Hover/selected may now reference removed nodes — clear if so.
+    if (this.hoveredId && !this.nodes.has(this.hoveredId)) this.hoveredId = null;
+    if (this.selectedId && !this.nodes.has(this.selectedId)) this.selectedId = null;
+  }
+
+  /** Remove a node + its label, keep edges (caller manages those). */
+  private removeNode(id: string): void {
+    const n = this.nodes.get(id);
+    if (!n) return;
+    if (n.labelSprite) {
+      n.mesh.remove(n.labelSprite);
+      n.labelSprite.material.map?.dispose();
+      n.labelSprite.material.dispose();
+    }
+    this.group.remove(n.mesh);
+    n.mesh.geometry.dispose();
+    this.nodes.delete(id);
+  }
+
+  /** Patch position + color on an existing node in place — no teardown. */
+  private patchNode(node: Node3D, opts: Node3DOptions): void {
+    node.mesh.position.set(opts.position[0], opts.position[1], opts.position[2]);
+    if (opts.color !== undefined) {
+      const color = toColor(opts.color);
+      node.mesh.material = this.getNodeMaterial(color);
+    }
+    // Keep the existing label; updating text would re-paint canvas
+    // and re-upload texture — not free, and rarely needed under scrub.
+    node.options = opts;
+    node.mesh.userData.payload = opts.data;
+  }
+
+  /** Tear down all edges (kept for clear() + diff-update flows). */
+  private clearEdges(): void {
+    for (const e of this.edges) {
+      this.group.remove(e.line);
+      e.line.geometry.dispose();
+      if (e.arrow) {
+        this.group.remove(e.arrow);
+        e.arrow.geometry.dispose();
+      }
+    }
+    this.edges = [];
+  }
+
   /** Compute a bounding box around all node positions — useful for fitToBox. */
   computeBounds(): THREE.Box3 {
     const box = new THREE.Box3();
@@ -236,25 +324,8 @@ export class Graph3D {
   }
 
   clear(): void {
-    for (const n of this.nodes.values()) {
-      if (n.labelSprite) {
-        n.mesh.remove(n.labelSprite);
-        n.labelSprite.material.map?.dispose();
-        n.labelSprite.material.dispose();
-      }
-      this.group.remove(n.mesh);
-      n.mesh.geometry.dispose();
-    }
-    for (const e of this.edges) {
-      this.group.remove(e.line);
-      e.line.geometry.dispose();
-      if (e.arrow) {
-        this.group.remove(e.arrow);
-        e.arrow.geometry.dispose();
-      }
-    }
-    this.nodes.clear();
-    this.edges = [];
+    for (const id of Array.from(this.nodes.keys())) this.removeNode(id);
+    this.clearEdges();
     this.hoveredId = null;
     this.selectedId = null;
   }
@@ -263,14 +334,13 @@ export class Graph3D {
   private getNodeMaterial(color: number): THREE.MeshStandardMaterial {
     let m = this.nodeMaterialCache.get(color);
     if (!m) {
-      // emissiveIntensity is pushed past 1.0 so the bloom postprocess
-      // (UnrealBloomPass with threshold ~0.2) catches the node bodies
-      // and glows them. Without bloom this looks slightly washed; the
-      // pair was tuned together.
+      // Tuned alongside WorldHUD's bloom defaults — emissive ~1.0 with
+      // bloom threshold ~0.45 produces a clean glow on bright cores
+      // without washing out the rest of the scene.
       m = new THREE.MeshStandardMaterial({
         color,
         emissive: color,
-        emissiveIntensity: 1.4,
+        emissiveIntensity: 1.0,
         roughness: 0.45,
         metalness: 0.05,
       });

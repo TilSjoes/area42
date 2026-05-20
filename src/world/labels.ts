@@ -112,3 +112,81 @@ function roundRect(
   ctx.arcTo(x,     y,     x + w, y,     r);
   ctx.closePath();
 }
+
+/**
+ * World-locked text: same canvas-painted texture, but on a Plane
+ * Mesh instead of a Sprite. The mesh inherits its parent group's
+ * rotation, so axis-name labels rotate WITH the data as the camera
+ * orbits — keeping the spatial intuition intact (Sprites billboard,
+ * which feels wrong for axis names).
+ *
+ * Two-sided material so the back of the plane is visible too —
+ * text mirrors when read from behind, but it's better than vanishing.
+ * Consumers can supply their own normal direction; default is +Z so
+ * the plane lies in the XY plane.
+ */
+export interface TextMeshOptions extends TextSpriteOptions {
+  /**
+   * Direction the plane "faces" — its surface normal. Default (0,0,1)
+   * which means the plane lies in XY. Pass [1,0,0] for a plane in YZ
+   * (readable from along the X axis), etc.
+   */
+  normal?: [number, number, number];
+}
+
+export function makeTextMesh(text: string, opts: TextMeshOptions = {}): THREE.Mesh {
+  const fontSize = 64;
+  const padding = opts.padding ?? 12;
+  const font = `${opts.weight ?? "600"} ${fontSize}px ${opts.font ?? "system-ui, sans-serif"}`;
+
+  const measureCtx = document.createElement("canvas").getContext("2d")!;
+  measureCtx.font = font;
+  const metrics = measureCtx.measureText(text);
+  const w = Math.ceil(metrics.width + padding * 2);
+  const h = fontSize + padding * 2;
+  const cw = nextPow2(w);
+  const ch = nextPow2(h);
+
+  const canvas = document.createElement("canvas");
+  canvas.width = cw;
+  canvas.height = ch;
+  const ctx = canvas.getContext("2d")!;
+
+  if (opts.background) {
+    ctx.fillStyle = opts.background;
+    roundRect(ctx, 0, 0, cw, ch, 8);
+    ctx.fill();
+  }
+
+  ctx.font = font;
+  ctx.fillStyle = opts.color ?? "#e0e8f0";
+  ctx.textBaseline = "middle";
+  ctx.textAlign = "left";
+  ctx.fillText(text, padding, ch / 2);
+
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.minFilter = THREE.LinearFilter;
+  tex.magFilter = THREE.LinearFilter;
+  tex.needsUpdate = true;
+
+  const scale = opts.scale ?? 28;
+  const aspect = cw / ch;
+  const geom = new THREE.PlaneGeometry(scale * aspect, scale);
+  const mat = new THREE.MeshBasicMaterial({
+    map: tex,
+    transparent: true,
+    side: THREE.DoubleSide,
+    depthWrite: false,
+  });
+  const mesh = new THREE.Mesh(geom, mat);
+
+  // Default normal +Z; rotate the plane to face the requested direction.
+  if (opts.normal) {
+    const target = new THREE.Vector3(...opts.normal).normalize();
+    const z = new THREE.Vector3(0, 0, 1);
+    const quat = new THREE.Quaternion().setFromUnitVectors(z, target);
+    mesh.setRotationFromQuaternion(quat);
+  }
+
+  return mesh;
+}
