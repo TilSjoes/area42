@@ -24,6 +24,8 @@ export { FlyControls } from "./fly-controls.js";
 export type { FlyControlsOptions } from "./fly-controls.js";
 export { WorldPanel } from "./world-panel.js";
 export type { WorldPanelOptions } from "./world-panel.js";
+export { ForceLayer } from "./force-layer.js";
+export type { ForceArrowSpec, ForceLayerOptions } from "./force-layer.js";
 export { makeTextSprite, makeTextMesh } from "./labels.js";
 export type { TextSpriteOptions, TextMeshOptions } from "./labels.js";
 export { scaleLinear, parseTime, categoricalIndex } from "./layout.js";
