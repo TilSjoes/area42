@@ -496,10 +496,20 @@ export class Graph3D {
     return n ? n.mesh.position.clone() : null;
   }
 
-  /** Effective rendered radius of a node (size × largest-axis scale). */
+  /**
+   * Effective vertical extent of a node — used by upstream UI to
+   * anchor labels / panels above the node without overlap. For
+   * geometric Mesh nodes this is the visual radius (size). For card
+   * Sprites it's half-height in world units (cards are wide-but-short,
+   * and the panel anchor wants the visual top, not the sprite width).
+   */
   getNodeRadius(id: string): number {
     const n = this.nodes.get(id);
     if (!n) return 0;
+    if (n.isCard) {
+      return n.baseScale.y * 0.5;
+    }
+    // Mesh: baseScale is (1,1,1) so this is just options.size.
     return (n.options.size ?? 6) * Math.max(n.baseScale.x, n.baseScale.y, n.baseScale.z);
   }
 
