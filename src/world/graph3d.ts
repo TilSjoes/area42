@@ -92,6 +92,13 @@ export class Graph3D {
   private raycaster = new THREE.Raycaster();
   private hoveredId: string | null = null;
   private selectedId: string | null = null;
+  /**
+   * Multi-selection set, populated via shift-click or `setMultiSelected`.
+   * Used for "drill-down into the relationships between these entities"
+   * — edges *between* multi-selected nodes get rendered at full opacity
+   * while unrelated edges dim. Independent of single-selectedId.
+   */
+  private multiSelectedIds = new Set<string>();
 
   /**
    * Fired when the hovered node changes. `id` is the new hover target,
@@ -233,15 +240,87 @@ export class Graph3D {
     if (id) this.applyHighlight(id);
   }
 
+  /** Add or remove a node from the multi-selection. Returns the new
+   *  state of the toggled id (true = now in set). */
+  toggleMultiSelected(id: string): boolean {
+    if (this.multiSelectedIds.has(id)) {
+      this.multiSelectedIds.delete(id);
+      this.applyHighlight(id);
+      this.applyEdgeHighlights();
+      return false;
+    }
+    this.multiSelectedIds.add(id);
+    this.applyHighlight(id);
+    this.applyEdgeHighlights();
+    return true;
+  }
+
+  /** Replace the entire multi-selection. */
+  setMultiSelected(ids: string[]): void {
+    const next = new Set(ids);
+    const touched = new Set<string>([...this.multiSelectedIds, ...next]);
+    this.multiSelectedIds = next;
+    for (const id of touched) this.applyHighlight(id);
+    this.applyEdgeHighlights();
+  }
+
+  /** Clear the multi-selection. Single selection is unaffected. */
+  clearMultiSelected(): void {
+    if (this.multiSelectedIds.size === 0) return;
+    const prev = Array.from(this.multiSelectedIds);
+    this.multiSelectedIds.clear();
+    for (const id of prev) this.applyHighlight(id);
+    this.applyEdgeHighlights();
+  }
+
+  /** Read the current multi-selection. */
+  getMultiSelected(): string[] {
+    return Array.from(this.multiSelectedIds);
+  }
+
   /** Recompute scale + label visibility for a node based on hover/selection. */
   private applyHighlight(id: string): void {
     const n = this.nodes.get(id);
     if (!n) return;
-    const isHover = this.hoveredId === id;
+    const isHover    = this.hoveredId === id;
     const isSelected = this.selectedId === id;
-    const scale = isSelected ? 1.45 : isHover ? 1.2 : 1.0;
+    const isMulti    = this.multiSelectedIds.has(id);
+    // Selection > multi > hover. Hover label appears for any of them.
+    const scale = isSelected ? 1.45 : isMulti ? 1.3 : isHover ? 1.2 : 1.0;
     n.mesh.scale.setScalar(scale * n.baseScale);
-    if (n.labelSprite) n.labelSprite.visible = isHover || isSelected;
+    if (n.labelSprite) n.labelSprite.visible = isHover || isSelected || isMulti;
+  }
+
+  /**
+   * When 2+ nodes are multi-selected, highlight the edges that connect
+   * any pair of them and dim the rest. Cheap update — flips an opacity
+   * value on the existing material; no geometry changes.
+   *
+   * With 0 or 1 multi-selected, behaviour is the prior default
+   * (edges at their normal 0.55 opacity).
+   */
+  private applyEdgeHighlights(): void {
+    const ms = this.multiSelectedIds;
+    const active = ms.size >= 2;
+    for (const e of this.edges) {
+      const between = active && ms.has(e.options.from) && ms.has(e.options.to);
+      const mat = e.line.material as THREE.LineBasicMaterial;
+      // Connecting edges → full opacity. Non-connecting → very dim
+      // when active multi-selection is in play; back to default when
+      // not. Three opacity levels keep the visual hierarchy clean.
+      if (between) {
+        mat.opacity = 1.0;
+      } else if (active) {
+        mat.opacity = 0.12;
+      } else {
+        mat.opacity = 0.55;
+      }
+      // Arrowheads ride along too — same hierarchy.
+      if (e.arrow) {
+        const am = e.arrow.material as THREE.MeshBasicMaterial;
+        am.opacity = between ? 1.0 : active ? 0.18 : 0.85;
+      }
+    }
   }
 
   /**
@@ -290,6 +369,15 @@ export class Graph3D {
     // Hover/selected may now reference removed nodes — clear if so.
     if (this.hoveredId && !this.nodes.has(this.hoveredId)) this.hoveredId = null;
     if (this.selectedId && !this.nodes.has(this.selectedId)) this.selectedId = null;
+    // Drop any multi-selected ids that no longer exist; keep the
+    // ones that survived the diff so the selection persists across
+    // time-scrub / axis-swap.
+    for (const id of Array.from(this.multiSelectedIds)) {
+      if (!this.nodes.has(id)) this.multiSelectedIds.delete(id);
+    }
+    // Edges were torn down + readded — re-apply the multi-select edge
+    // highlight against the fresh edge set.
+    this.applyEdgeHighlights();
   }
 
   /** Remove a node + its label, keep edges (caller manages those). */
@@ -363,6 +451,7 @@ export class Graph3D {
     this.clearEdges();
     this.hoveredId = null;
     this.selectedId = null;
+    this.multiSelectedIds.clear();
   }
 
   // ── Material caches keep one material per color, sharing GPU state ──
