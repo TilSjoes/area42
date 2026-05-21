@@ -28,6 +28,12 @@ import { makeTextSprite } from "./labels.js";
  * where the metaphor maps cleanly (sphere↔circle, box↔rect,
  * octahedron↔diamond, cylinder-hex↔hexagon) and adds 3D-only
  * primitives for richer kind-differentiation.
+ *
+ * "card" is a different beast: a billboarded translucent sprite
+ * with kind-color accent + label text. Useful when you want every
+ * entity to read as an Area42-style element rather than a geometric
+ * primitive. Loses the kind→shape signal (kind→color stripe carries
+ * it instead) but gains card-fidelity at every node.
  */
 export type Node3DShape =
   | "sphere"        // default — generic / initiative
@@ -37,7 +43,8 @@ export type Node3DShape =
   | "octahedron"    // diamond / risk
   | "tetrahedron"   // sharp / novelty
   | "icosahedron"   // multi-faceted / security or maturity
-  | "torus";        // cyclic / event
+  | "torus"         // cyclic / event
+  | "card";         // billboarded mini-card with label + kind stripe
 
 export interface Node3DOptions {
   id: string;
@@ -65,10 +72,13 @@ export interface Edge3DOptions {
 interface Node3D {
   id: string;
   options: Node3DOptions;
-  mesh: THREE.Mesh;
-  /** Hover/selection label sprite, hidden by default. */
+  /** Either a Mesh (geometric shape) or a Sprite (card). */
+  mesh: THREE.Object3D;
+  /** True when `mesh` is a card sprite — affects disposal + label handling. */
+  isCard: boolean;
+  /** Hover/selection label sprite, hidden by default. Null for card nodes (the card already carries the label). */
   labelSprite: THREE.Sprite | null;
-  /** Base radius — used to restore size when un-highlighted. */
+  /** Base scale — used to restore size when un-highlighted. */
   baseScale: number;
 }
 
@@ -115,38 +125,50 @@ export class Graph3D {
   addNode(options: Node3DOptions): void {
     const color = toColor(options.color ?? 0x4dabf7);
     const radius = options.size ?? 6;
-    const material = this.getNodeMaterial(color);
-    // Geometry is per-node so we can vary radius. Cheap for <1k nodes;
-    // when we hit InstancedMesh we'll merge per-shape buckets.
-    const geom = makeShapeGeometry(options.shape ?? "sphere", radius);
-    const mesh = new THREE.Mesh(geom, material);
+    const isCard = options.shape === "card";
+
+    let mesh: THREE.Object3D;
+    let labelSprite: THREE.Sprite | null = null;
+
+    if (isCard) {
+      // Card mode: a billboarded sprite with the label baked in.
+      // The label IS the card content — no separate hover-label sprite.
+      mesh = makeNodeCardSprite(options.label || options.id, color, radius);
+    } else {
+      // Geometric mode: SphereGeometry + friends with the shared
+      // emissive material. Per-node geometry; cheap for <1k nodes.
+      const material = this.getNodeMaterial(color);
+      const geom = makeShapeGeometry(options.shape ?? "sphere", radius);
+      const m = new THREE.Mesh(geom, material);
+      mesh = m;
+
+      // Hover/select label as a separate sprite, attached to the
+      // mesh so it inherits the node's position. Hidden by default.
+      // Sprite anchor (0.5, -0.4) so the text sits above the sphere
+      // in screen space regardless of camera angle.
+      if (options.label) {
+        labelSprite = makeTextSprite(options.label, {
+          scale: 18,
+          color: "#e0e8f0",
+          background: "rgba(8, 12, 20, 0.78)",
+        });
+        labelSprite.center.set(0.5, -0.4);
+        labelSprite.position.set(0, radius + 2, 0);
+        labelSprite.visible = false;
+        m.add(labelSprite);
+      }
+    }
+
     mesh.position.set(options.position[0], options.position[1], options.position[2]);
     mesh.userData.nodeId = options.id;
     mesh.userData.payload = options.data;
     this.group.add(mesh);
 
-    // Label sprite: created up front, attached to the mesh so it
-    // inherits the node's position. Hidden by default; setHovered /
-    // setSelected toggle visibility. Sprite anchor is below-center so
-    // the text sits above the sphere in screen space regardless of
-    // camera angle.
-    let labelSprite: THREE.Sprite | null = null;
-    if (options.label) {
-      labelSprite = makeTextSprite(options.label, {
-        scale: 18,
-        color: "#e0e8f0",
-        background: "rgba(8, 12, 20, 0.78)",
-      });
-      labelSprite.center.set(0.5, -0.4);
-      labelSprite.position.set(0, radius + 2, 0);
-      labelSprite.visible = false;
-      mesh.add(labelSprite);
-    }
-
     this.nodes.set(options.id, {
       id: options.id,
       options,
       mesh,
+      isCard,
       labelSprite,
       baseScale: 1,
     });
@@ -399,16 +421,29 @@ export class Graph3D {
       n.labelSprite.material.dispose();
     }
     this.group.remove(n.mesh);
-    n.mesh.geometry.dispose();
+    if (n.isCard) {
+      // Card: Sprite owns its CanvasTexture material — dispose both.
+      const sprite = n.mesh as THREE.Sprite;
+      sprite.material.map?.dispose();
+      sprite.material.dispose();
+    } else {
+      // Geometric: per-node geometry. Material is shared via cache.
+      const m = n.mesh as THREE.Mesh;
+      m.geometry.dispose();
+    }
     this.nodes.delete(id);
   }
 
   /** Patch position + color on an existing node in place — no teardown. */
   private patchNode(node: Node3D, opts: Node3DOptions): void {
     node.mesh.position.set(opts.position[0], opts.position[1], opts.position[2]);
-    if (opts.color !== undefined) {
+    if (opts.color !== undefined && !node.isCard) {
+      // Geometric mode: swap to the cached material for the new color.
+      // Card mode skips this — the card's color is baked into its
+      // canvas texture; re-painting under scrub is expensive and
+      // rarely needed (entity colors rarely change over time).
       const color = toColor(opts.color);
-      node.mesh.material = this.getNodeMaterial(color);
+      (node.mesh as THREE.Mesh).material = this.getNodeMaterial(color);
     }
     // Keep the existing label; updating text would re-paint canvas
     // and re-upload texture — not free, and rarely needed under scrub.
@@ -537,7 +572,101 @@ function makeShapeGeometry(shape: Node3DShape, size: number): THREE.BufferGeomet
     case "torus":
       return new THREE.TorusGeometry(size * 0.9, size * 0.32, 12, 24);
     case "sphere":
+    case "card":
     default:
       return new THREE.SphereGeometry(size, 16, 12);
   }
+}
+
+/**
+ * Build a billboarded mini-card sprite for an entity — the Area42
+ * card aesthetic carried into the world at every node. Translucent
+ * background, kind-color stripe down the left, label text truncated
+ * to fit. Auto-faces the camera (Sprite billboard) so it's readable
+ * from any angle.
+ *
+ * Size semantics: caller's `size` only loosely scales the card —
+ * cards are dominated by the label text width, so small/large
+ * entities don't look dramatically different. confidence-as-radius
+ * doesn't apply visually (cards are uniform). That's intentional;
+ * cards are about identity, geometric shapes are about magnitude.
+ */
+function makeNodeCardSprite(label: string, kindColor: number, size: number): THREE.Sprite {
+  // World-unit dimensions. Roughly 90 wu wide × 26 wu tall — sized
+  // so labels remain legible at default camera distance without
+  // dominating the scene at 151 nodes.
+  const W_WU = 90 + Math.min(20, size * 0.5);
+  const H_WU = 26;
+  const RES = 4;  // 4× DPI multiplier for crisp edges on retina.
+  const cw = Math.round(W_WU * RES);
+  const ch = Math.round(H_WU * RES);
+
+  const canvas = document.createElement("canvas");
+  canvas.width = cw;
+  canvas.height = ch;
+  const ctx = canvas.getContext("2d")!;
+  ctx.scale(RES, RES);
+
+  const colorStr = "#" + kindColor.toString(16).padStart(6, "0");
+
+  // Background: translucent rounded rect, slight inset to avoid
+  // sub-pixel border bleed at the edge.
+  ctx.fillStyle = "rgba(14, 20, 33, 0.86)";
+  cardRoundRect(ctx, 0.75, 0.75, W_WU - 1.5, H_WU - 1.5, 5);
+  ctx.fill();
+
+  // Kind-color border. Thin, since the stripe carries most of the
+  // identity signal.
+  ctx.strokeStyle = colorStr;
+  ctx.lineWidth = 1;
+  cardRoundRect(ctx, 0.75, 0.75, W_WU - 1.5, H_WU - 1.5, 5);
+  ctx.stroke();
+
+  // Kind-color stripe on the left — the strongest identity cue.
+  ctx.fillStyle = colorStr;
+  cardRoundRect(ctx, 2, 2, 4, H_WU - 4, 1.5);
+  ctx.fill();
+
+  // Label text — truncate to fit.
+  ctx.font = "bold 12px system-ui, sans-serif";
+  ctx.fillStyle = "#e0e8f0";
+  ctx.textBaseline = "middle";
+  let trimmed = label;
+  const maxW = W_WU - 14;
+  while (ctx.measureText(trimmed).width > maxW && trimmed.length > 4) {
+    trimmed = trimmed.slice(0, -2) + "…";
+  }
+  ctx.fillText(trimmed, 11, H_WU / 2);
+
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.minFilter = THREE.LinearFilter;
+  tex.magFilter = THREE.LinearFilter;
+  tex.needsUpdate = true;
+
+  const mat = new THREE.SpriteMaterial({
+    map: tex,
+    transparent: true,
+    depthTest: true,
+    depthWrite: false,
+  });
+  const sprite = new THREE.Sprite(mat);
+  sprite.scale.set(W_WU, H_WU, 1);
+  return sprite;
+}
+
+function cardRoundRect(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  w: number,
+  h: number,
+  r: number,
+): void {
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.arcTo(x + w, y,     x + w, y + h, r);
+  ctx.arcTo(x + w, y + h, x,     y + h, r);
+  ctx.arcTo(x,     y + h, x,     y,     r);
+  ctx.arcTo(x,     y,     x + w, y,     r);
+  ctx.closePath();
 }
