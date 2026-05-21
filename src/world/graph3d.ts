@@ -78,8 +78,13 @@ interface Node3D {
   isCard: boolean;
   /** Hover/selection label sprite, hidden by default. Null for card nodes (the card already carries the label). */
   labelSprite: THREE.Sprite | null;
-  /** Base scale — used to restore size when un-highlighted. */
-  baseScale: number;
+  /**
+   * Initial scale captured at addNode-time. We multiply by the
+   * highlight factor on hover/select instead of using setScalar —
+   * critical for Sprites (which store W/H/1 in their scale vec; a
+   * scalar overwrite collapses them to a 1×1 world-units blob).
+   */
+  baseScale: THREE.Vector3;
 }
 
 interface Edge3D {
@@ -170,7 +175,7 @@ export class Graph3D {
       mesh,
       isCard,
       labelSprite,
-      baseScale: 1,
+      baseScale: mesh.scale.clone(),
     });
   }
 
@@ -308,8 +313,16 @@ export class Graph3D {
     const isSelected = this.selectedId === id;
     const isMulti    = this.multiSelectedIds.has(id);
     // Selection > multi > hover. Hover label appears for any of them.
-    const scale = isSelected ? 1.45 : isMulti ? 1.3 : isHover ? 1.2 : 1.0;
-    n.mesh.scale.setScalar(scale * n.baseScale);
+    const factor = isSelected ? 1.45 : isMulti ? 1.3 : isHover ? 1.2 : 1.0;
+    // Multiply baseScale (NOT setScalar) — Sprites store W/H/1 in
+    // .scale, so any scalar overwrite collapses them to a 1×1 blob.
+    // For Mesh nodes baseScale is (1,1,1) so this is equivalent to
+    // setScalar(factor) anyway.
+    n.mesh.scale.set(
+      n.baseScale.x * factor,
+      n.baseScale.y * factor,
+      n.baseScale.z * factor,
+    );
     if (n.labelSprite) n.labelSprite.visible = isHover || isSelected || isMulti;
   }
 
@@ -483,11 +496,11 @@ export class Graph3D {
     return n ? n.mesh.position.clone() : null;
   }
 
-  /** Effective rendered radius of a node (size × baseScale). */
+  /** Effective rendered radius of a node (size × largest-axis scale). */
   getNodeRadius(id: string): number {
     const n = this.nodes.get(id);
     if (!n) return 0;
-    return (n.options.size ?? 6) * n.baseScale;
+    return (n.options.size ?? 6) * Math.max(n.baseScale.x, n.baseScale.y, n.baseScale.z);
   }
 
   clear(): void {
@@ -592,12 +605,16 @@ function makeShapeGeometry(shape: Node3DShape, size: number): THREE.BufferGeomet
  * cards are about identity, geometric shapes are about magnitude.
  */
 function makeNodeCardSprite(label: string, kindColor: number, size: number): THREE.Sprite {
-  // World-unit dimensions. Roughly 90 wu wide × 26 wu tall — sized
+  // World-unit dimensions. Roughly 90 wu wide × 22 wu tall — sized
   // so labels remain legible at default camera distance without
-  // dominating the scene at 151 nodes.
-  const W_WU = 90 + Math.min(20, size * 0.5);
-  const H_WU = 26;
-  const RES = 4;  // 4× DPI multiplier for crisp edges on retina.
+  // dominating the scene at 151 nodes. Slightly slimmer than the
+  // first pass so the cards feel less heavy when packed close.
+  const W_WU = 88 + Math.min(20, size * 0.5);
+  const H_WU = 22;
+  // 6× DPI multiplier — bumped from 4 after Frode noted the text
+  // could be crisper. Small font + dense pixel grid = sharp glyphs
+  // even when the camera flies close.
+  const RES = 6;
   const cw = Math.round(W_WU * RES);
   const ch = Math.round(H_WU * RES);
 
@@ -611,36 +628,41 @@ function makeNodeCardSprite(label: string, kindColor: number, size: number): THR
 
   // Background: translucent rounded rect, slight inset to avoid
   // sub-pixel border bleed at the edge.
-  ctx.fillStyle = "rgba(14, 20, 33, 0.86)";
-  cardRoundRect(ctx, 0.75, 0.75, W_WU - 1.5, H_WU - 1.5, 5);
+  ctx.fillStyle = "rgba(14, 20, 33, 0.88)";
+  cardRoundRect(ctx, 0.75, 0.75, W_WU - 1.5, H_WU - 1.5, 4);
   ctx.fill();
 
   // Kind-color border. Thin, since the stripe carries most of the
   // identity signal.
   ctx.strokeStyle = colorStr;
-  ctx.lineWidth = 1;
-  cardRoundRect(ctx, 0.75, 0.75, W_WU - 1.5, H_WU - 1.5, 5);
+  ctx.lineWidth = 0.75;
+  cardRoundRect(ctx, 0.75, 0.75, W_WU - 1.5, H_WU - 1.5, 4);
   ctx.stroke();
 
   // Kind-color stripe on the left — the strongest identity cue.
   ctx.fillStyle = colorStr;
-  cardRoundRect(ctx, 2, 2, 4, H_WU - 4, 1.5);
+  cardRoundRect(ctx, 1.75, 1.75, 3, H_WU - 3.5, 1);
   ctx.fill();
 
-  // Label text — truncate to fit.
-  ctx.font = "bold 12px system-ui, sans-serif";
+  // Label text — smaller, with crisper rendering at the 6× canvas
+  // density. SF Mono / Menlo gives that "console line" feel that
+  // matches the Area42 chrome.
+  ctx.font = "600 10px -apple-system, system-ui, 'Segoe UI', sans-serif";
   ctx.fillStyle = "#e0e8f0";
   ctx.textBaseline = "middle";
   let trimmed = label;
-  const maxW = W_WU - 14;
+  const maxW = W_WU - 12;
   while (ctx.measureText(trimmed).width > maxW && trimmed.length > 4) {
     trimmed = trimmed.slice(0, -2) + "…";
   }
-  ctx.fillText(trimmed, 11, H_WU / 2);
+  ctx.fillText(trimmed, 8.5, H_WU / 2);
 
   const tex = new THREE.CanvasTexture(canvas);
+  // Anisotropic sampling helps glyph crispness at oblique angles
+  // (when the card is in the periphery and you're flying past).
   tex.minFilter = THREE.LinearFilter;
   tex.magFilter = THREE.LinearFilter;
+  tex.anisotropy = 4;
   tex.needsUpdate = true;
 
   const mat = new THREE.SpriteMaterial({
