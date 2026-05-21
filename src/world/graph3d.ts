@@ -292,33 +292,42 @@ export class Graph3D {
   }
 
   /**
-   * When 2+ nodes are multi-selected, highlight the edges that connect
-   * any pair of them and dim the rest. Cheap update — flips an opacity
-   * value on the existing material; no geometry changes.
+   * When 1+ nodes are multi-selected, surface their local
+   * neighbourhood: edges *between* multi-selected nodes get full
+   * brightness, edges that *touch* any multi-selected node go
+   * medium (still readable), and the rest dim hard. With three tiers
+   * the user can read "what flows between THESE entities" even when
+   * the pair has no direct edge — the shared neighbours stand out
+   * via their connections to both.
    *
-   * With 0 or 1 multi-selected, behaviour is the prior default
+   * With 0 multi-selected, behaviour is the prior default
    * (edges at their normal 0.55 opacity).
    */
   private applyEdgeHighlights(): void {
     const ms = this.multiSelectedIds;
-    const active = ms.size >= 2;
+    const active = ms.size >= 1;
     for (const e of this.edges) {
-      const between = active && ms.has(e.options.from) && ms.has(e.options.to);
+      const fromHit = ms.has(e.options.from);
+      const toHit   = ms.has(e.options.to);
+      const between  = active && fromHit && toHit;
+      const incident = active && (fromHit || toHit);
+
       const mat = e.line.material as THREE.LineBasicMaterial;
-      // Connecting edges → full opacity. Non-connecting → very dim
-      // when active multi-selection is in play; back to default when
-      // not. Three opacity levels keep the visual hierarchy clean.
+      // Three-tier hierarchy: between (the connections you asked for),
+      // incident (their neighbourhood), other (background).
       if (between) {
         mat.opacity = 1.0;
+      } else if (incident) {
+        mat.opacity = 0.55;
       } else if (active) {
-        mat.opacity = 0.12;
+        mat.opacity = 0.08;
       } else {
         mat.opacity = 0.55;
       }
       // Arrowheads ride along too — same hierarchy.
       if (e.arrow) {
         const am = e.arrow.material as THREE.MeshBasicMaterial;
-        am.opacity = between ? 1.0 : active ? 0.18 : 0.85;
+        am.opacity = between ? 1.0 : incident ? 0.85 : active ? 0.12 : 0.85;
       }
     }
   }
