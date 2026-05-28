@@ -79,6 +79,16 @@ interface Node3D {
   /** Hover/selection label sprite, hidden by default. Null for card nodes (the card already carries the label). */
   labelSprite: THREE.Sprite | null;
   /**
+   * For card nodes only: a low-detail sphere shown when the camera is
+   * further than `lodCardDistance`. Both representations share the same
+   * world position; per-frame `applyLOD` flips visibility so we never
+   * paint both at once. null for non-card nodes (those don't need a
+   * fallback — sphere primitives stay visible at any distance).
+   */
+  fallbackMesh: THREE.Mesh | null;
+  /** Hover label for the fallback sphere, mirrors labelSprite's role for non-card nodes. */
+  fallbackLabel: THREE.Sprite | null;
+  /**
    * Initial scale captured at addNode-time. We multiply by the
    * highlight factor on hover/select instead of using setScalar —
    * critical for Sprites (which store W/H/1 in their scale vec; a
@@ -122,6 +132,20 @@ export class Graph3D {
    */
   onHoverChange?: (id: string | null) => void;
 
+  /**
+   * LOD: when set, card-shape nodes whose camera distance exceeds this
+   * value swap to a small sphere fallback. Beyond this threshold the
+   * card text becomes unreadable anyway, so trading it for a glowing
+   * dot keeps the scene legible at zoom-out without losing the "this
+   * thing exists here" cue. null = LOD disabled (card always visible).
+   *
+   * Caller drives the swap by calling `applyLOD(camera)` per frame —
+   * Graph3D doesn't own a render loop.
+   */
+  private lodCardDistance: number | null = null;
+  /** Last camera passed to applyLOD — used to apply LOD to nodes added after configuration. */
+  private lastLODCamera: THREE.Camera | null = null;
+
   constructor() {
     this.group = new THREE.Group();
     this.group.name = "Graph3D";
@@ -134,11 +158,38 @@ export class Graph3D {
 
     let mesh: THREE.Object3D;
     let labelSprite: THREE.Sprite | null = null;
+    let fallbackMesh: THREE.Mesh | null = null;
+    let fallbackLabel: THREE.Sprite | null = null;
 
     if (isCard) {
       // Card mode: a billboarded sprite with the label baked in.
       // The label IS the card content — no separate hover-label sprite.
       mesh = makeNodeCardSprite(options.label || options.id, color, radius);
+
+      // LOD fallback: a small emissive sphere shown when the camera is
+      // far enough that the card's text becomes unreadable. Built
+      // alongside the card so applyLOD can flip visibility per frame
+      // without rebuilding geometry. Hidden by default — the card is
+      // the close-distance representation and stays visible until
+      // setLODCardDistance + applyLOD say otherwise.
+      const fallbackMaterial = this.getNodeMaterial(color);
+      const fallbackGeom = new THREE.SphereGeometry(radius * 0.45, 12, 8);
+      fallbackMesh = new THREE.Mesh(fallbackGeom, fallbackMaterial);
+      fallbackMesh.visible = false;
+
+      // Fallback gets its own hover label so far-away spheres aren't
+      // anonymous — same pattern as a regular sphere node.
+      if (options.label) {
+        fallbackLabel = makeTextSprite(options.label, {
+          scale: 18,
+          color: "#e0e8f0",
+          background: "rgba(8, 12, 20, 0.78)",
+        });
+        fallbackLabel.center.set(0.5, -0.4);
+        fallbackLabel.position.set(0, radius * 0.45 + 2, 0);
+        fallbackLabel.visible = false;
+        fallbackMesh.add(fallbackLabel);
+      }
     } else {
       // Geometric mode: SphereGeometry + friends with the shared
       // emissive material. Per-node geometry; cheap for <1k nodes.
@@ -169,14 +220,29 @@ export class Graph3D {
     mesh.userData.payload = options.data;
     this.group.add(mesh);
 
+    if (fallbackMesh) {
+      fallbackMesh.position.copy(mesh.position);
+      fallbackMesh.userData.nodeId = options.id;
+      fallbackMesh.userData.payload = options.data;
+      this.group.add(fallbackMesh);
+    }
+
     this.nodes.set(options.id, {
       id: options.id,
       options,
       mesh,
       isCard,
       labelSprite,
+      fallbackMesh,
+      fallbackLabel,
       baseScale: mesh.scale.clone(),
     });
+
+    // If LOD is already configured, apply it immediately to the new
+    // node so it doesn't pop visible-then-hidden on the next frame.
+    if (this.lodCardDistance !== null && this.lastLODCamera) {
+      this.applyLODForNode(this.nodes.get(options.id)!, this.lastLODCamera);
+    }
   }
 
   addEdge(options: Edge3DOptions): void {
@@ -232,8 +298,15 @@ export class Graph3D {
   /** Internal raycast that returns the Node3D record (with mesh access). */
   private pickNode(ndcX: number, ndcY: number, camera: THREE.Camera): Node3D | null {
     this.raycaster.setFromCamera(new THREE.Vector2(ndcX, ndcY), camera);
+    // Include both the primary mesh and (when present + visible) the
+    // LOD fallback. Three.js raycaster respects .visible by default,
+    // so a hidden card or hidden fallback won't be hit — the user's
+    // cursor always picks whichever representation they actually see.
     const meshes: THREE.Object3D[] = [];
-    for (const n of this.nodes.values()) meshes.push(n.mesh);
+    for (const n of this.nodes.values()) {
+      meshes.push(n.mesh);
+      if (n.fallbackMesh) meshes.push(n.fallbackMesh);
+    }
     const hits = this.raycaster.intersectObjects(meshes, false);
     if (hits.length === 0) return null;
     const id = hits[0].object.userData.nodeId as string | undefined;
@@ -323,7 +396,14 @@ export class Graph3D {
       n.baseScale.y * factor,
       n.baseScale.z * factor,
     );
-    if (n.labelSprite) n.labelSprite.visible = isHover || isSelected || isMulti;
+    // Keep the LOD fallback in sync — it has its own (1,1,1) baseScale
+    // so a plain setScalar suffices. Without this the fallback sphere
+    // would never react to hover/select when the camera is zoomed out.
+    if (n.fallbackMesh) {
+      n.fallbackMesh.scale.setScalar(factor);
+    }
+    if (n.labelSprite)   n.labelSprite.visible   = isHover || isSelected || isMulti;
+    if (n.fallbackLabel) n.fallbackLabel.visible = isHover || isSelected || isMulti;
   }
 
   /**
@@ -444,6 +524,17 @@ export class Graph3D {
       const m = n.mesh as THREE.Mesh;
       m.geometry.dispose();
     }
+    // LOD fallback (cards only): dispose its label + geometry.
+    if (n.fallbackMesh) {
+      if (n.fallbackLabel) {
+        n.fallbackMesh.remove(n.fallbackLabel);
+        n.fallbackLabel.material.map?.dispose();
+        n.fallbackLabel.material.dispose();
+      }
+      this.group.remove(n.fallbackMesh);
+      n.fallbackMesh.geometry.dispose();
+      // Material is shared via getNodeMaterial cache — leave alone.
+    }
     this.nodes.delete(id);
   }
 
@@ -458,10 +549,21 @@ export class Graph3D {
       const color = toColor(opts.color);
       (node.mesh as THREE.Mesh).material = this.getNodeMaterial(color);
     }
+    // Keep the LOD fallback co-located with the primary mesh under
+    // diff-update (e.g. time-scrub repositions both). Color is also
+    // patched so a re-themed node's fallback dot tracks the change.
+    if (node.fallbackMesh) {
+      node.fallbackMesh.position.set(opts.position[0], opts.position[1], opts.position[2]);
+      if (opts.color !== undefined) {
+        const color = toColor(opts.color);
+        node.fallbackMesh.material = this.getNodeMaterial(color);
+      }
+    }
     // Keep the existing label; updating text would re-paint canvas
     // and re-upload texture — not free, and rarely needed under scrub.
     node.options = opts;
     node.mesh.userData.payload = opts.data;
+    if (node.fallbackMesh) node.fallbackMesh.userData.payload = opts.data;
   }
 
   /** Tear down all edges (kept for clear() + diff-update flows). */
@@ -519,6 +621,61 @@ export class Graph3D {
     this.hoveredId = null;
     this.selectedId = null;
     this.multiSelectedIds.clear();
+  }
+
+  /**
+   * Configure level-of-detail for card-shape nodes. When `distance` is
+   * set, every card whose camera distance exceeds `distance` swaps to
+   * its small sphere fallback on the next `applyLOD(camera)` call;
+   * cards within range stay rendered as cards.
+   *
+   * Trade-off: at extreme zoom-out, dozens of overlapping cards become
+   * a wall of unreadable text. Swapping them to glowing dots beyond a
+   * distance threshold preserves the "things exist here" cue without
+   * the visual noise. Hovering or zooming back in restores the card.
+   *
+   * Pass null to disable LOD (cards always visible). Sphere-shape and
+   * other geometric nodes are unaffected — they have no fallback and
+   * are intended to read at any distance.
+   */
+  setLODCardDistance(distance: number | null): void {
+    this.lodCardDistance = distance;
+    if (distance === null) {
+      // Disabling LOD — restore every card and hide every fallback.
+      for (const n of this.nodes.values()) {
+        if (!n.fallbackMesh) continue;
+        n.mesh.visible = true;
+        n.fallbackMesh.visible = false;
+      }
+    }
+  }
+
+  /**
+   * Apply LOD swaps based on the camera's current position. Call once
+   * per frame from your render hook (cheap — just N distanceToSquared
+   * calls + visibility flips). No-op when LOD is unconfigured or when
+   * no card-shape nodes exist.
+   */
+  applyLOD(camera: THREE.Camera): void {
+    this.lastLODCamera = camera;
+    if (this.lodCardDistance === null) return;
+    for (const n of this.nodes.values()) {
+      if (!n.fallbackMesh) continue;
+      this.applyLODForNode(n, camera);
+    }
+  }
+
+  /** Per-node LOD: flip card vs fallback based on camera distance. */
+  private applyLODForNode(n: Node3D, camera: THREE.Camera): void {
+    if (!n.fallbackMesh || this.lodCardDistance === null) return;
+    // distanceToSquared avoids the sqrt — we compare against the
+    // squared threshold. With ~500 nodes per frame this saves a
+    // measurable chunk of CPU for an otherwise idle render loop.
+    const d2 = n.mesh.position.distanceToSquared(camera.position);
+    const t2 = this.lodCardDistance * this.lodCardDistance;
+    const showCard = d2 < t2;
+    n.mesh.visible = showCard;
+    n.fallbackMesh.visible = !showCard;
   }
 
   // ── Material caches keep one material per color, sharing GPU state ──
