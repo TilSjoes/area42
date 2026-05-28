@@ -166,18 +166,22 @@ export class Graph3D {
       // The label IS the card content — no separate hover-label sprite.
       mesh = makeNodeCardSprite(options.label || options.id, color, radius);
 
-      // LOD fallback: a small emissive sphere shown when the camera is
-      // far enough that the card's text becomes unreadable. Built
-      // alongside the card so applyLOD can flip visibility per frame
-      // without rebuilding geometry. Hidden by default — the card is
-      // the close-distance representation and stays visible until
-      // setLODCardDistance + applyLOD say otherwise.
+      // LOD fallback: a small Area42-style emissive octahedron shown
+      // when the camera is far enough that the card's text becomes
+      // unreadable. Octahedron over a sphere because a glowing diamond
+      // reads as a deliberate marker (think HUD waypoint) rather than
+      // a marble — closer to the Area42 visual language. Shares the
+      // node-material cache so the kind color glows uniformly.
+      // Built alongside the card so applyLOD can flip visibility per
+      // frame without rebuilding geometry. Hidden by default — the
+      // card is the close-distance representation and stays visible
+      // until setLODCardDistance + applyLOD say otherwise.
       const fallbackMaterial = this.getNodeMaterial(color);
-      const fallbackGeom = new THREE.SphereGeometry(radius * 0.45, 12, 8);
+      const fallbackGeom = new THREE.OctahedronGeometry(radius * 0.6);
       fallbackMesh = new THREE.Mesh(fallbackGeom, fallbackMaterial);
       fallbackMesh.visible = false;
 
-      // Fallback gets its own hover label so far-away spheres aren't
+      // Fallback gets its own hover label so far-away markers aren't
       // anonymous — same pattern as a regular sphere node.
       if (options.label) {
         fallbackLabel = makeTextSprite(options.label, {
@@ -186,7 +190,8 @@ export class Graph3D {
           background: "rgba(8, 12, 20, 0.78)",
         });
         fallbackLabel.center.set(0.5, -0.4);
-        fallbackLabel.position.set(0, radius * 0.45 + 2, 0);
+        // Lift label clear of the octahedron's top vertex.
+        fallbackLabel.position.set(0, radius * 0.6 + 2, 0);
         fallbackLabel.visible = false;
         fallbackMesh.add(fallbackLabel);
       }
