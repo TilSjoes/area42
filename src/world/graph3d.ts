@@ -126,11 +126,32 @@ export class Graph3D {
   private multiSelectedIds = new Set<string>();
 
   /**
+   * When non-null, only nodes whose id is in this set are visible; all
+   * others (and edges touching them) are hidden. Survives the per-frame
+   * LOD pass (applyLODForNode honors it). null = no isolation (all
+   * visible). Set via setIsolated/clearIsolated — lets a consumer show
+   * just a subgraph (e.g. "the entities this force affects") without
+   * tearing down + rebuilding the scene.
+   */
+  private isolatedIds: Set<string> | null = null;
+
+  /**
    * Fired when the hovered node changes. `id` is the new hover target,
    * or null when leaving all nodes. Useful for upstream tooltip UI
    * outside the scene.
    */
   onHoverChange?: (id: string | null) => void;
+
+  /**
+   * When false, hovering a node no longer reveals its in-scene label
+   * sprite — the hover scale bump still applies and `onHoverChange` still
+   * fires (so external readouts keep working), only the floating label is
+   * suppressed. Selection and multi-select labels are unaffected. Lets a
+   * consumer kill the "label pops up under the cursor and obstructs the
+   * view" effect without losing hover tracking. Default true (prior
+   * behavior).
+   */
+  showHoverLabel = true;
 
   /**
    * LOD: when set, card-shape nodes whose camera distance exceeds this
@@ -268,7 +289,14 @@ export class Graph3D {
       arrow = this.makeArrow(fromN.mesh.position, toN.mesh.position, color, toN.options.size ?? 6);
       this.group.add(arrow);
     }
-    this.edges.push({ options, line, arrow });
+    const edge: Edge3D = { options, line, arrow };
+    this.edges.push(edge);
+    // If a subgraph is isolated, a freshly added edge must respect it too.
+    if (this.isolatedIds) {
+      const vis = this.edgeEndpointsVisible(edge);
+      line.visible = vis;
+      if (arrow) arrow.visible = vis;
+    }
   }
 
   /** Build a small cone aligned with the edge, sitting at the `to` boundary. */
@@ -383,6 +411,49 @@ export class Graph3D {
     return Array.from(this.multiSelectedIds);
   }
 
+  /**
+   * Isolate a subset: only the given node ids stay visible; every other
+   * node — and any edge touching a hidden node — is hidden. Does NOT
+   * remove anything, so it's instantly reversible via clearIsolated() and
+   * survives axis-swaps / scrubs. Honored by the per-frame LOD pass.
+   * Passing an empty array hides everything; use clearIsolated to restore.
+   */
+  setIsolated(ids: string[]): void {
+    this.isolatedIds = new Set(ids);
+    for (const [id, n] of this.nodes) {
+      const vis = this.isolatedIds.has(id);
+      n.mesh.visible = vis;
+      if (n.fallbackMesh) n.fallbackMesh.visible = vis;
+    }
+    this.refreshEdgeVisibility();
+  }
+
+  /** Restore full visibility after setIsolated. No-op if not isolated. */
+  clearIsolated(): void {
+    if (!this.isolatedIds) return;
+    this.isolatedIds = null;
+    for (const n of this.nodes.values()) {
+      n.mesh.visible = true;
+      if (n.fallbackMesh) n.fallbackMesh.visible = true;
+    }
+    this.refreshEdgeVisibility();
+  }
+
+  /** Whether both of an edge's endpoints are currently visible. */
+  private edgeEndpointsVisible(e: Edge3D): boolean {
+    if (!this.isolatedIds) return true;
+    return this.isolatedIds.has(e.options.from) && this.isolatedIds.has(e.options.to);
+  }
+
+  /** Re-hide/show edges to match the current isolation state. */
+  private refreshEdgeVisibility(): void {
+    for (const e of this.edges) {
+      const vis = this.edgeEndpointsVisible(e);
+      e.line.visible = vis;
+      if (e.arrow) e.arrow.visible = vis;
+    }
+  }
+
   /** Recompute scale + label visibility for a node based on hover/selection. */
   private applyHighlight(id: string): void {
     const n = this.nodes.get(id);
@@ -407,8 +478,11 @@ export class Graph3D {
     if (n.fallbackMesh) {
       n.fallbackMesh.scale.setScalar(factor);
     }
-    if (n.labelSprite)   n.labelSprite.visible   = isHover || isSelected || isMulti;
-    if (n.fallbackLabel) n.fallbackLabel.visible = isHover || isSelected || isMulti;
+    // Hover alone reveals the label only when showHoverLabel is on;
+    // selection + multi-select always label regardless.
+    const labelOn = isSelected || isMulti || (isHover && this.showHoverLabel);
+    if (n.labelSprite)   n.labelSprite.visible   = labelOn;
+    if (n.fallbackLabel) n.fallbackLabel.visible = labelOn;
   }
 
   /**
@@ -672,6 +746,12 @@ export class Graph3D {
 
   /** Per-node LOD: flip card vs fallback based on camera distance. */
   private applyLODForNode(n: Node3D, camera: THREE.Camera): void {
+    // Isolation wins over LOD: a hidden node stays hidden every frame.
+    if (this.isolatedIds && !this.isolatedIds.has(n.options.id)) {
+      n.mesh.visible = false;
+      if (n.fallbackMesh) n.fallbackMesh.visible = false;
+      return;
+    }
     if (!n.fallbackMesh || this.lodCardDistance === null) return;
     // distanceToSquared avoids the sqrt — we compare against the
     // squared threshold. With ~500 nodes per frame this saves a
