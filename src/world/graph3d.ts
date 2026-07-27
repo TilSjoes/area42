@@ -583,6 +583,19 @@ export class Graph3D {
     this.applyEdgeHighlights();
   }
 
+  /**
+   * Cheap in-place rescale for time-scrubbing / animation. Multiplies the node's
+   * captured base scale by `factor` (use 0 to hide) without rebuilding geometry,
+   * edges, or running the node diff. Call this per scrub tick — never `update()` —
+   * to keep scrubbing smooth on large graphs.
+   */
+  setNodeScale(id: string, factor: number): void {
+    const n = this.nodes.get(id);
+    if (!n) return;
+    n.mesh.scale.copy(n.baseScale).multiplyScalar(factor);
+    if (n.fallbackMesh) n.fallbackMesh.scale.copy(n.baseScale).multiplyScalar(factor);
+  }
+
   /** Remove a node + its label, keep edges (caller manages those). */
   private removeNode(id: string): void {
     const n = this.nodes.get(id);
