@@ -67,6 +67,6 @@
     "three": "^0.183.2",
     "troika-three-text": "^0.52.0",
     "typescript": "^6.0.2",
-    "vite": "^8.0.2"
+    "vite": "^8.1.5"
   }
 }
