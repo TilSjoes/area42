@@ -1,6 +1,6 @@
 {
   "name": "@dontpanic/area42",
-  "version": "0.3.0",
+  "version": "0.4.3",
   "description": "Futuristic HUD visualization engine for real-time system monitoring",
   "type": "module",
   "main": "dist/area42.js",
@@ -11,6 +11,22 @@
       "import": "./dist/area42.js",
       "require": "./dist/area42.umd.cjs",
       "types": "./dist/index.d.ts"
+    },
+    "./world": {
+      "import": "./dist/world/index.js",
+      "types": "./dist/world/index.d.ts"
+    }
+  },
+  "peerDependencies": {
+    "three": "^0.183.0",
+    "troika-three-text": "^0.52.0"
+  },
+  "peerDependenciesMeta": {
+    "three": {
+      "optional": true
+    },
+    "troika-three-text": {
+      "optional": true
     }
   },
   "files": [
@@ -49,7 +65,8 @@
   "devDependencies": {
     "@types/three": "^0.183.1",
     "three": "^0.183.2",
+    "troika-three-text": "^0.52.0",
     "typescript": "^6.0.2",
-    "vite": "^8.0.2"
+    "vite": "^8.1.5"
   }
 }
