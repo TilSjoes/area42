@@ -49,6 +49,18 @@ export class Table {
     this.selectedRow = -1;
   }
 
+  /** Programmatically set (or clear, with -1) the highlighted row — for a Table used as a
+   *  selector, so the active choice shows without a click. Clamps to the row range. */
+  setSelected(index: number): void {
+    const n = this.getDisplayRows().length;
+    this.selectedRow = index >= 0 && index < n ? index : -1;
+  }
+
+  /** The currently highlighted row index, or -1. */
+  get selected(): number {
+    return this.selectedRow;
+  }
+
   addRow(row: TableRow): void {
     this.rows.unshift(row);
     if (this.filteredRows !== null) {
