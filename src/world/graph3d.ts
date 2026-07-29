@@ -596,6 +596,17 @@ export class Graph3D {
     if (n.fallbackMesh) n.fallbackMesh.scale.copy(n.baseScale).multiplyScalar(factor);
   }
 
+  /** Recolor a node in place via the shared material cache — cheap enough for a scrub/lens
+   *  loop (no teardown). Geometric nodes only; a card's color is baked into its texture and
+   *  is skipped (re-painting the canvas under a lens is expensive and rarely wanted). */
+  setNodeColor(id: string, color: number | string): void {
+    const n = this.nodes.get(id);
+    if (!n || n.isCard) return;
+    const mat = this.getNodeMaterial(toColor(color));
+    (n.mesh as THREE.Mesh).material = mat;
+    if (n.fallbackMesh) n.fallbackMesh.material = mat;
+  }
+
   /** Remove a node + its label, keep edges (caller manages those). */
   private removeNode(id: string): void {
     const n = this.nodes.get(id);
