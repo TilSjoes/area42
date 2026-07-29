@@ -95,6 +95,10 @@ interface Node3D {
    * scalar overwrite collapses them to a 1×1 world-units blob).
    */
   baseScale: THREE.Vector3;
+  /** Current applied scale factor (× baseScale). Eased toward `targetScale` by tickScales. */
+  scaleFactor: number;
+  /** Pending eased-scale target, or null when the node is at rest. */
+  targetScale: number | null;
 }
 
 interface Edge3D {
@@ -262,6 +266,8 @@ export class Graph3D {
       fallbackMesh,
       fallbackLabel,
       baseScale: mesh.scale.clone(),
+      scaleFactor: 1,
+      targetScale: null,
     });
 
     // If LOD is already configured, apply it immediately to the new
@@ -589,11 +595,42 @@ export class Graph3D {
    * edges, or running the node diff. Call this per scrub tick — never `update()` —
    * to keep scrubbing smooth on large graphs.
    */
-  setNodeScale(id: string, factor: number): void {
+  /** Set a node's scale factor (× baseScale). Instant by default; pass `smooth` to ease toward
+   *  it over a few frames via tickScales — turns a discrete timeline scrub into a fluid grow/
+   *  shrink instead of a pop. */
+  setNodeScale(id: string, factor: number, smooth = false): void {
     const n = this.nodes.get(id);
     if (!n) return;
-    n.mesh.scale.copy(n.baseScale).multiplyScalar(factor);
-    if (n.fallbackMesh) n.fallbackMesh.scale.copy(n.baseScale).multiplyScalar(factor);
+    if (smooth) {
+      n.targetScale = factor;
+      return;
+    }
+    n.targetScale = null;
+    n.scaleFactor = factor;
+    this.applyScale(n, factor);
+  }
+
+  private applyScale(n: Node3D, f: number): void {
+    n.mesh.scale.copy(n.baseScale).multiplyScalar(f);
+    if (n.fallbackMesh) n.fallbackMesh.scale.copy(n.baseScale).multiplyScalar(f);
+  }
+
+  /** Advance eased scale animations. Call once per frame from your render hook with the frame
+   *  delta (seconds). Frame-rate independent; a no-op when nothing is animating. */
+  tickScales(dt: number): void {
+    if (dt <= 0) dt = 1 / 60;
+    const rate = 1 - Math.exp(-dt * 14); // ~99% within ~330ms, smooth but snappy
+    for (const n of this.nodes.values()) {
+      if (n.targetScale === null) continue;
+      const next = n.scaleFactor + (n.targetScale - n.scaleFactor) * rate;
+      if (Math.abs(n.targetScale - next) < 0.004) {
+        n.scaleFactor = n.targetScale;
+        n.targetScale = null;
+      } else {
+        n.scaleFactor = next;
+      }
+      this.applyScale(n, n.scaleFactor);
+    }
   }
 
   /** Recolor a node in place via the shared material cache — cheap enough for a scrub/lens
