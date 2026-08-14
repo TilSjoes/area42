@@ -46,4 +46,6 @@ npm run build   # Builds library to dist/
 
 ## License
 
-MIT — DONTPANIC AS
+Apache-2.0 — Copyright (c) 2026 DONTPANIC AS
+
+See [LICENSE](LICENSE) for the full licence text and [NOTICE](NOTICE) for attribution requirements.

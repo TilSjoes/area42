@@ -259,7 +259,7 @@ The key differentiator: **every competitor bolts AI onto an existing desktop par
 
 - **Core compositor + Spine**: MIT license (maximize adoption)
 - **Themes + Souls**: Community contributed, MIT
-- **Area42 library**: Already MIT (@dontpanic/area42)
+- **Area42 library**: Apache-2.0 (@dontpanic/area42)
 - **Revenue model**: Consulting, custom enterprise deployments, hardware bundles
 - **Community**: GitHub, Discord, documentation site
 

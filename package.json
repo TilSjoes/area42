@@ -18,8 +18,7 @@
     }
   },
   "peerDependencies": {
-    "three": "^0.183.0",
-    "troika-three-text": "^0.52.0"
+    "three": "^0.183.0"
   },
   "peerDependenciesMeta": {
     "three": {
@@ -35,7 +34,8 @@
     "ARCHITECTURE.md",
     "AREA42OS.md",
     "AREA42_V2_RFC.md",
-    "LICENSE"
+    "LICENSE",
+    "NOTICE"
   ],
   "scripts": {
     "dev": "vite",
@@ -57,16 +57,13 @@
     "nats"
   ],
   "author": "DONTPANIC AS <frode@dontpanic.no>",
-  "license": "MIT",
+  "license": "Apache-2.0",
   "repository": {
     "type": "git",
     "url": "https://github.com/TilSjoes/area42.git"
   },
   "dependencies": {
     "troika-three-text": "^0.52.5"
-  },
-  "peerDependencies": {
-    "three": "^0.183.0"
   },
   "devDependencies": {
     "@types/three": "^0.183.1",
