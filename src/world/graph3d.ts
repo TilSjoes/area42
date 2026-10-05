@@ -114,6 +114,7 @@ export class Graph3D {
   private nodes = new Map<string, Node3D>();
   private edges: Edge3D[] = [];
   private nodeMaterialCache = new Map<number, THREE.MeshStandardMaterial>();
+  private geometryCache = new Map<string, THREE.BufferGeometry>();
   private edgeMaterialCache = new Map<number, THREE.LineBasicMaterial>();
   private arrowMaterialCache = new Map<number, THREE.MeshBasicMaterial>();
 
@@ -202,7 +203,7 @@ export class Graph3D {
       // card is the close-distance representation and stays visible
       // until setLODCardDistance + applyLOD say otherwise.
       const fallbackMaterial = this.getNodeMaterial(color);
-      const fallbackGeom = new THREE.OctahedronGeometry(radius * 0.6);
+      const fallbackGeom = this.getCachedGeometry(`fallback:${radius}`, () => new THREE.OctahedronGeometry(radius * 0.6));
       fallbackMesh = new THREE.Mesh(fallbackGeom, fallbackMaterial);
       fallbackMesh.visible = false;
 
@@ -221,28 +222,13 @@ export class Graph3D {
         fallbackMesh.add(fallbackLabel);
       }
     } else {
-      // Geometric mode: SphereGeometry + friends with the shared
-      // emissive material. Per-node geometry; cheap for <1k nodes.
+      // Geometric mode: a shared emissive material AND a shared geometry (one per shape+size, not one per node:
+      // a 6,000-node graph used to build 6,000 geometries). The hover/select label is NOT built here — it is
+      // created the first time the node is hovered or selected (`ensureLabel`), so a large graph never pays for
+      // thousands of canvas textures nobody looks at.
       const material = this.getNodeMaterial(color);
-      const geom = makeShapeGeometry(options.shape ?? "sphere", radius);
-      const m = new THREE.Mesh(geom, material);
-      mesh = m;
-
-      // Hover/select label as a separate sprite, attached to the
-      // mesh so it inherits the node's position. Hidden by default.
-      // Sprite anchor (0.5, -0.4) so the text sits above the sphere
-      // in screen space regardless of camera angle.
-      if (options.label) {
-        labelSprite = makeTextSprite(options.label, {
-          scale: 18,
-          color: "#e0e8f0",
-          background: "rgba(8, 12, 20, 0.78)",
-        });
-        labelSprite.center.set(0.5, -0.4);
-        labelSprite.position.set(0, radius + 2, 0);
-        labelSprite.visible = false;
-        m.add(labelSprite);
-      }
+      const geom = this.getShapeGeometry(options.shape ?? "sphere", radius);
+      mesh = new THREE.Mesh(geom, material);
     }
 
     mesh.position.set(options.position[0], options.position[1], options.position[2]);
@@ -487,6 +473,7 @@ export class Graph3D {
     // Hover alone reveals the label only when showHoverLabel is on;
     // selection + multi-select always label regardless.
     const labelOn = isSelected || isMulti || (isHover && this.showHoverLabel);
+    if (labelOn) this.ensureLabel(n);
     if (n.labelSprite)   n.labelSprite.visible   = labelOn;
     if (n.fallbackLabel) n.fallbackLabel.visible = labelOn;
   }
@@ -660,9 +647,8 @@ export class Graph3D {
       sprite.material.map?.dispose();
       sprite.material.dispose();
     } else {
-      // Geometric: per-node geometry. Material is shared via cache.
-      const m = n.mesh as THREE.Mesh;
-      m.geometry.dispose();
+      // Geometric: geometry AND material are shared via their caches — other nodes still use them, so neither is
+      // disposed here (the cache is bounded by the number of distinct shape+size combinations).
     }
     // LOD fallback (cards only): dispose its label + geometry.
     if (n.fallbackMesh) {
@@ -672,8 +658,7 @@ export class Graph3D {
         n.fallbackLabel.material.dispose();
       }
       this.group.remove(n.fallbackMesh);
-      n.fallbackMesh.geometry.dispose();
-      // Material is shared via getNodeMaterial cache — leave alone.
+      // Geometry + material are shared via their caches — leave alone.
     }
     this.nodes.delete(id);
   }
@@ -825,6 +810,35 @@ export class Graph3D {
   }
 
   // ── Material caches keep one material per color, sharing GPU state ──
+  /** Shared geometry, one per shape+size (never per node). Kept for the life of the graph: bounded by the number of
+   *  distinct shape/size pairs, and other nodes may still be using it when one node is removed. */
+  private getCachedGeometry(key: string, make: () => THREE.BufferGeometry): THREE.BufferGeometry {
+    let g = this.geometryCache.get(key);
+    if (!g) { g = make(); this.geometryCache.set(key, g); }
+    return g;
+  }
+
+  private getShapeGeometry(shape: string, radius: number): THREE.BufferGeometry {
+    return this.getCachedGeometry(`${shape}:${radius}`, () => makeShapeGeometry(shape as Node3DOptions["shape"] & string, radius));
+  }
+
+  /** Build a geometric node's hover/select label the first time it is wanted. A node with no `label`, or a card
+   *  (which carries its own), never gets one. */
+  private ensureLabel(n: Node3D): void {
+    if (n.labelSprite || n.isCard || !n.options.label) return;
+    const radius = n.options.size ?? 6;
+    const sprite = makeTextSprite(n.options.label, {
+      scale: 18,
+      color: "#e0e8f0",
+      background: "rgba(8, 12, 20, 0.78)",
+    });
+    sprite.center.set(0.5, -0.4);
+    sprite.position.set(0, radius + 2, 0);
+    sprite.visible = false;
+    n.mesh.add(sprite);
+    n.labelSprite = sprite;
+  }
+
   private getNodeMaterial(color: number): THREE.MeshStandardMaterial {
     let m = this.nodeMaterialCache.get(color);
     if (!m) {
