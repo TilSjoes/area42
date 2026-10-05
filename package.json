@@ -1,6 +1,6 @@
 {
   "name": "@dontpanic/area42",
-  "version": "0.4.4",
+  "version": "0.4.5",
   "description": "Futuristic HUD visualization engine for real-time system monitoring",
   "type": "module",
   "main": "dist/area42.js",
@@ -42,7 +42,7 @@
     "build": "vite build && tsc",
     "preview": "vite preview",
     "lint": "eslint src/",
-    "test": "vitest",
+    "test": "node test/graph3d.test.mjs",
     "prepare": "npm run build || true"
   },
   "keywords": [
