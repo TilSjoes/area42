@@ -42,7 +42,7 @@
     "build": "vite build && tsc",
     "preview": "vite preview",
     "lint": "eslint src/",
-    "test": "vitest",
+    "test": "node test/graph3d.test.mjs",
     "prepare": "npm run build || true"
   },
   "keywords": [

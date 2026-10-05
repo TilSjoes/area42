@@ -103,8 +103,29 @@ interface Node3D {
 
 interface Edge3D {
   options: Edge3DOptions;
-  line: THREE.Line;
+  /** The edge's own Line, or null when edges are batched (then it lives at `index` in the shared LineSegments). */
+  line: THREE.Line | null;
   arrow?: THREE.Mesh;
+  /** Slot in the batch buffers (batched mode only). */
+  index: number;
+  /** Batched mode: false collapses the segment to a point so it draws nothing (isolation hides edges this way). */
+  shown: boolean;
+}
+
+/** All edges in ONE LineSegments draw call: position + per-vertex colour buffers that grow by doubling. */
+interface EdgeBatch {
+  segments: THREE.LineSegments;
+  capacity: number;
+  pos: Float32Array;
+  col: Float32Array;
+  /** Resting rgb per edge. `col` holds RGBA per vertex: the rgb is this, the ALPHA is the highlight tier. */
+  base: Float32Array;
+}
+
+export interface Graph3DOptions {
+  /** Draw all edges as one LineSegments (one draw call, per-edge highlight tiers) instead of one THREE.Line each.
+   *  Off by default so existing consumers are unchanged; turn it on for graphs with thousands of edges. */
+  batchEdges?: boolean;
 }
 
 export class Graph3D {
@@ -172,7 +193,11 @@ export class Graph3D {
   /** Last camera passed to applyLOD — used to apply LOD to nodes added after configuration. */
   private lastLODCamera: THREE.Camera | null = null;
 
-  constructor() {
+  private batchEdges: boolean;
+  private batch: EdgeBatch | null = null;
+
+  constructor(opts: Graph3DOptions = {}) {
+    this.batchEdges = opts.batchEdges === true;
     this.group = new THREE.Group();
     this.group.name = "Graph3D";
   }
@@ -268,26 +293,117 @@ export class Graph3D {
     const toN = this.nodes.get(options.to);
     if (!fromN || !toN) return;
     const color = toColor(options.color ?? 0x8b9bb4);
-    const material = this.getEdgeMaterial(color);
-    const geom = new THREE.BufferGeometry().setFromPoints([
-      fromN.mesh.position.clone(),
-      toN.mesh.position.clone(),
-    ]);
-    const line = new THREE.Line(geom, material);
-    this.group.add(line);
+
+    let line: THREE.Line | null = null;
+    let index = -1;
+    if (this.batchEdges) {
+      index = this.edges.length;
+      this.ensureBatch(index + 1);
+    } else {
+      const material = this.getEdgeMaterial(color);
+      const geom = new THREE.BufferGeometry().setFromPoints([
+        fromN.mesh.position.clone(),
+        toN.mesh.position.clone(),
+      ]);
+      line = new THREE.Line(geom, material);
+      this.group.add(line);
+    }
 
     let arrow: THREE.Mesh | undefined;
     if (options.directional) {
       arrow = this.makeArrow(fromN.mesh.position, toN.mesh.position, color, toN.options.size ?? 6);
       this.group.add(arrow);
     }
-    const edge: Edge3D = { options, line, arrow };
+    const edge: Edge3D = { options, line, arrow, index, shown: true };
     this.edges.push(edge);
+    if (this.batch) {
+      const c = new THREE.Color(color);
+      this.batch.base.set([c.r, c.g, c.b], index * 3);
+      this.writeEdgePos(edge);
+      this.writeEdgeColor(edge);
+      this.batch.segments.geometry.setDrawRange(0, this.edges.length * 2);
+      this.markBatchDirty();
+    }
     // If a subgraph is isolated, a freshly added edge must respect it too.
     if (this.isolatedIds) {
       const vis = this.edgeEndpointsVisible(edge);
-      line.visible = vis;
-      if (arrow) arrow.visible = vis;
+      this.setEdgeShown(edge, vis);
+    }
+  }
+
+  // ── batched-edge plumbing ─────────────────────────────────────────────────────────────────────────────────────
+  /** Make room for `n` edges: allocate the batch on first use, then grow by doubling (copying what is live). */
+  private ensureBatch(n: number): void {
+    if (!this.batch) {
+      const capacity = Math.max(256, n);
+      const segments = new THREE.LineSegments(new THREE.BufferGeometry(), new THREE.LineBasicMaterial({ vertexColors: true, transparent: true, opacity: 1 }));
+      segments.frustumCulled = false; // buffers change every update; a stale bounding sphere would cull live edges
+      segments.name = "Graph3D.edges";
+      this.batch = { segments, capacity: 0, pos: new Float32Array(0), col: new Float32Array(0), base: new Float32Array(0) };
+      this.group.add(segments);
+      this.growBatch(capacity);
+      return;
+    }
+    if (n > this.batch.capacity) this.growBatch(Math.max(n, this.batch.capacity * 2));
+  }
+
+  private growBatch(capacity: number): void {
+    const b = this.batch!;
+    const pos = new Float32Array(capacity * 6); pos.set(b.pos);
+    const col = new Float32Array(capacity * 8); col.set(b.col); // RGBA per vertex, two vertices per edge
+    const base = new Float32Array(capacity * 3); base.set(b.base);
+    const old = b.segments.geometry;
+    const geom = new THREE.BufferGeometry();
+    geom.setAttribute("position", new THREE.BufferAttribute(pos, 3));
+    geom.setAttribute("color", new THREE.BufferAttribute(col, 4)); // 4 components => three.js uses the vertex alpha
+    geom.setDrawRange(0, this.edges.length * 2);
+    b.segments.geometry = geom;
+    old.dispose();
+    b.capacity = capacity; b.pos = pos; b.col = col; b.base = base;
+  }
+
+  private markBatchDirty(): void {
+    const g = this.batch!.segments.geometry;
+    (g.getAttribute("position") as THREE.BufferAttribute).needsUpdate = true;
+    (g.getAttribute("color") as THREE.BufferAttribute).needsUpdate = true;
+  }
+
+  /** Where a batched edge's two vertices sit: its nodes, or collapsed to its start when hidden (draws nothing). */
+  private writeEdgePos(e: Edge3D): void {
+    const b = this.batch!;
+    const a = this.nodes.get(e.options.from)!.mesh.position;
+    const z = e.shown ? this.nodes.get(e.options.to)!.mesh.position : a;
+    b.pos.set([a.x, a.y, a.z, z.x, z.y, z.z], e.index * 6);
+  }
+
+  /** Brightness tier for an edge under the current multi-selection: between 1.0, incident 0.55, unrelated-while-active
+   *  0.08, resting 0.55 (the same four levels the per-line opacity used, now genuinely per edge). */
+  private edgeTier(e: Edge3D): number {
+    const ms = this.multiSelectedIds;
+    if (ms.size === 0) return 0.55;
+    const fromHit = ms.has(e.options.from);
+    const toHit = ms.has(e.options.to);
+    return fromHit && toHit ? 1.0 : fromHit || toHit ? 0.55 : 0.08;
+  }
+
+  private writeEdgeColor(e: Edge3D): void {
+    const b = this.batch!;
+    // The tier is the vertex ALPHA, not a dimmer colour: premultiplying made resting edges dark and opaque, which showed
+    // as dark stripes wherever an edge crossed in front of a node; alpha blends exactly like the per-line opacity did.
+    const t = this.edgeTier(e);
+    const i = e.index * 3;
+    const r = b.base[i], g = b.base[i + 1], bl = b.base[i + 2];
+    b.col.set([r, g, bl, t, r, g, bl, t], e.index * 8);
+  }
+
+  /** Show/hide one edge (and its arrow) in whichever mode is active. */
+  private setEdgeShown(e: Edge3D, shown: boolean): void {
+    if (e.line) e.line.visible = shown;
+    if (e.arrow) e.arrow.visible = shown;
+    if (this.batch && e.shown !== shown) {
+      e.shown = shown;
+      this.writeEdgePos(e);
+      this.markBatchDirty();
     }
   }
 
@@ -439,11 +555,7 @@ export class Graph3D {
 
   /** Re-hide/show edges to match the current isolation state. */
   private refreshEdgeVisibility(): void {
-    for (const e of this.edges) {
-      const vis = this.edgeEndpointsVisible(e);
-      e.line.visible = vis;
-      if (e.arrow) e.arrow.visible = vis;
-    }
+    for (const e of this.edges) this.setEdgeShown(e, this.edgeEndpointsVisible(e));
   }
 
   /** Recompute scale + label visibility for a node based on hover/selection. */
@@ -499,17 +611,13 @@ export class Graph3D {
       const between  = active && fromHit && toHit;
       const incident = active && (fromHit || toHit);
 
-      const mat = e.line.material as THREE.LineBasicMaterial;
       // Three-tier hierarchy: between (the connections you asked for),
       // incident (their neighbourhood), other (background).
-      if (between) {
-        mat.opacity = 1.0;
-      } else if (incident) {
-        mat.opacity = 0.55;
-      } else if (active) {
-        mat.opacity = 0.08;
-      } else {
-        mat.opacity = 0.55;
+      if (e.line) {
+        const mat = e.line.material as THREE.LineBasicMaterial;
+        mat.opacity = between ? 1.0 : incident ? 0.55 : active ? 0.08 : 0.55;
+      } else if (this.batch) {
+        this.writeEdgeColor(e);
       }
       // Arrowheads ride along too — same hierarchy.
       if (e.arrow) {
@@ -517,6 +625,7 @@ export class Graph3D {
         am.opacity = between ? 1.0 : incident ? 0.85 : active ? 0.12 : 0.85;
       }
     }
+    if (this.batch) this.markBatchDirty();
   }
 
   /**
@@ -694,14 +803,18 @@ export class Graph3D {
   /** Tear down all edges (kept for clear() + diff-update flows). */
   private clearEdges(): void {
     for (const e of this.edges) {
-      this.group.remove(e.line);
-      e.line.geometry.dispose();
+      if (e.line) {
+        this.group.remove(e.line);
+        e.line.geometry.dispose();
+      }
       if (e.arrow) {
         this.group.remove(e.arrow);
         e.arrow.geometry.dispose();
       }
     }
     this.edges = [];
+    // Batched: keep the buffers (they are reused by the next addEdge run); just draw nothing until then.
+    if (this.batch) this.batch.segments.geometry.setDrawRange(0, 0);
   }
 
   /** Compute a bounding box around all node positions — useful for fitToBox. */
